@@ -1,5 +1,7 @@
 # LLM Gateway Kit
 
+[![CI](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Swift](https://img.shields.io/badge/swift-5.10%2B-orange)](Package.swift)
+
 **The LLM ops layer for Swift apps — not another wrapper kit.**
 
 Most "AI starter kits" for iOS give you an API client, an auth screen, a
