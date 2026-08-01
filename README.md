@@ -141,6 +141,12 @@ See `Sources/LLMGatewayKitDemo/main.swift` for a complete, runnable example
 (`swift run LLMGatewayKitDemo`) using mock providers so you can see the
 cache-hit/circuit-breaker/budget behavior without any real API keys.
 
+If your machine has `swiftly` installed and `swift build` fails at the link
+step with `ld: unknown option: -no_warn_duplicate_libraries`, a standalone
+swiftly toolchain is shadowing Xcode's own toolchain in `$PATH`. Use
+`make build` / `make test` / `make run` (or `xcrun swift build` directly) to
+force Xcode's toolchain instead.
+
 ## What this is not
 
 - Not an auth or paywall solution — bring your own (RevenueCat,
