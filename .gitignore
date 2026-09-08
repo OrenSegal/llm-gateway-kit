@@ -6,3 +6,4 @@
 DerivedData/
 .index-build/
 Package.resolved
+.env
