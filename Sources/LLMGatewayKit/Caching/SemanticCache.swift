@@ -3,14 +3,12 @@ import Foundation
 /// Embedding-similarity response cache for text prompts.
 ///
 /// A plain exact-match cache only helps when the same string is sent twice.
-/// Real usage is dominated by paraphrases — "what's expiring soon" vs
+/// Many prompts are paraphrases of each other, like "what's expiring soon" vs
 /// "what should I use up" — that an exact-match cache always misses.
 /// `SemanticCache` embeds each prompt and looks up the nearest neighbor by
 /// cosine similarity, so paraphrased-but-equivalent prompts hit the cache
-/// too. This is the single biggest lever on inference spend: in production
-/// use this pattern measurably cut LLM cost 40-50% under real traffic,
-/// because a large share of prompts in a typical app are semantically
-/// repeated even when the exact wording varies.
+/// too. How much this saves depends on how often your app's prompts repeat
+/// in meaning even when the exact wording varies.
 ///
 /// Thread-safe via `actor` isolation — safe to share one instance across
 /// concurrent requests.

@@ -38,7 +38,7 @@ public actor VisionCache {
     ///   - hasher: Buyer-supplied perceptual hash implementation.
     ///   - ttl: How long a stored response stays eligible for a hit. Defaults to 24h.
     ///   - maxHammingDistance: Maximum bit difference between hashes to count as
-    ///     a match. Default 10 mirrors the threshold used in production for
+    ///     a match. Default 10 mirrors the threshold used in the app this was extracted from for
     ///     64-bit perceptual hashes — tune tighter for hash algorithms with
     ///     more bits, or for tasks where a near-miss is unacceptable.
     public init(

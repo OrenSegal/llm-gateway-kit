@@ -10,7 +10,7 @@ nothing to keep it affordable or reliable once real users start hitting it.
 
 LLM Gateway Kit is the layer underneath that: **semantic and vision response
 caching, tiered circuit breakers across providers, and hard cost-budget
-enforcement**: the production concerns that show up the first time your AI
+enforcement**: the problems that show up the first time your AI
 feature has real traffic, a flaky provider, or a user who finds the free
 tier's edges.
 
@@ -25,7 +25,7 @@ Gateway Kit handles cost and reliability.
 ### 1. Semantic + vision response caching
 
 A plain exact-match cache only helps when a user sends the literal same
-string twice. Real traffic is dominated by paraphrases, like "what should I use
+string twice. Many requests are paraphrases, like "what should I use
 up soon" vs. "what's expiring in my pantry", that an exact-match cache
 always misses.
 
@@ -75,15 +75,15 @@ short-circuiting chain of pre-flight checks (budget, circuit state, your own
 kill switches/entitlement checks) that keeps the "should this call even
 happen" logic in one place instead of scattered across call sites.
 
-## The result
+## Where this came from
 
-These three patterns, running in production inside a real shipping iOS app
-under real user traffic, measurably cut LLM inference cost by **40-50%**.
-That's not a synthetic benchmark. It's what semantic/vision cache hits plus
-a cheap-first tiered cascade actually save once traffic has the paraphrase
-and repeat-query patterns real usage always has. Your mileage will vary with
-your traffic shape, but the mechanism is the same regardless of which
-provider(s) you're calling.
+These three patterns were extracted from the LLM gateway in an iOS app that
+is currently in TestFlight beta. Semantic and vision caching serve repeat and
+paraphrased requests without a paid call, the tiered cascade tries a cheaper
+model first and falls back when a provider fails or returns low confidence,
+and the budget enforcer blocks calls once a cost cap is hit. There is no
+published cost benchmark for this kit. How much it saves depends on how often
+your traffic repeats itself and which provider(s) you're calling.
 
 ## Install
 
