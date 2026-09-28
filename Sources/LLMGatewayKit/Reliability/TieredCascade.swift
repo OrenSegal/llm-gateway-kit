@@ -25,7 +25,7 @@ public struct CascadeTier: Sendable {
 /// primary model with a stronger/pricier backup — escalating to the next
 /// tier on failure, an open circuit breaker, or (optionally) low confidence.
 ///
-/// This is the pattern used in production to run a lower-cost vision model
+/// This is the pattern used in the app this was extracted from to run a lower-cost vision model
 /// as primary with a higher-quality model as fallback: most calls resolve on
 /// the cheap tier, and only the ones that actually need it escalate, so
 /// average cost per call stays close to the cheap tier's price while
