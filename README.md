@@ -152,9 +152,9 @@ force Xcode's toolchain instead.
 ## Limitations
 
 - **The budget cap is soft under concurrency.** `LLMGateway` checks the cap, sends the request, and records the real cost afterwards. Calls that start at the same time can all pass the check before any of them records spend, so a burst can overshoot the cap by the cost of the calls in flight.
-- **The pre-flight estimate is rough.** It prices the request at the first tier's rate, counts input tokens as characters divided by 4, and assumes 256 output tokens when `maxOutputTokens` is unset. A call that escalates to a pricier tier costs more than it was checked for.
-- **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device and per install, and resets with the app's data. Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
-- **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries stay until you call `evictExpired()`. Each lookup compares against every entry, which is fine for hundreds of entries and slow for many thousands.
+- **The pre-flight estimate is rough.** It prices the request at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier costs more than it was checked for.
+- **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
+- **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries stay until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.
 - **The semantic cache keys on the prompt text only.** It ignores `taskType`, so similar prompts sent for different tasks can share a cached answer (`VisionCache` does separate by `taskType`). The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
 
 ## What this is not
