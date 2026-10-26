@@ -2,23 +2,46 @@
 
 [![CI](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Swift](https://img.shields.io/badge/swift-5.10%2B-orange)](Package.swift)
 
-**The LLM ops layer for Swift apps. Not another wrapper kit.**
+A Swift package that sits between an app and its LLM providers and handles cost and reliability. It was extracted from the LLM gateway in Shelfie, my kitchen-inventory iOS app (closed TestFlight beta).
 
-Most "AI starter kits" for iOS give you an API client, an auth screen, a
-paywall, and a chat UI. That gets an LLM feature into your app. It does
-nothing to keep it affordable or reliable once real users start hitting it.
+- **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no paid call.
+- **Circuit breaker.** Each provider gets a breaker that opens after 5 straight failures (configurable), and `TieredCascade` sends traffic to the next provider instead of retrying a dead one.
+- **Spend limits.** `BudgetEnforcer` checks a daily USD cap before each call, with separate caps for signed-in and anonymous callers, and refuses the call once the cap is reached.
 
-LLM Gateway Kit is the layer underneath that: **semantic and vision response
-caching, tiered circuit breakers across providers, and hard cost-budget
-enforcement**: the problems that show up the first time your AI
-feature has real traffic, a flaky provider, or a user who finds the free
-tier's edges.
+Run the demo (macOS with Xcode, no API keys, mock providers):
 
-It is deliberately *not* a wrapper kit. It has no opinion about your auth,
-your paywall, or your UI. It has one job: sit between your app and whatever
-LLM provider(s) you call, and make that path cheaper and more resilient.
-Bring your own provider adapter, your own auth, your own paywall. LLM
-Gateway Kit handles cost and reliability.
+```bash
+git clone https://github.com/OrenSegal/llm-gateway-kit.git
+cd llm-gateway-kit
+make run
+```
+
+```text
+First call (cache miss, hits the cheap-fast-model tier):
+  -> [cheap-fast-model] response to: reset my password (source model: cheap-fast-model)
+
+Second call, a paraphrase (cache hit, zero spend):
+  -> [cheap-fast-model] response to: reset my password (source model: cache)
+
+Third call, unrelated prompt (cache miss again):
+  -> [cheap-fast-model] response to: what's the weather today (source model: cheap-fast-model)
+
+Audit log: 3 calls, 1 served from cache, 2 hit a paid provider.
+```
+
+## Results on a scripted trace
+
+`Tests/LLMGatewayKitTests/TraceReplayTests.swift` replays 22 requests through one `LLMGateway` and asserts every count below, so CI fails if the behavior changes. The traffic is synthetic and the providers are mocks priced at $0.01 (cheap) and $0.05 (backup) per call. It shows what each mechanism does. It is not a measurement of savings on real traffic.
+
+| Phase | Requests | What happened |
+|---|---|---|
+| Cache | 4 new questions, then 6 rewordings of them | 4 paid calls, 6 served from the semantic cache |
+| Spend limit | 5 anonymous questions, $0.035/day anonymous cap | 3 served, 2 refused with `dailyBudgetExceeded` before reaching a provider |
+| Outage | Cheap provider down, 7 new questions | All 7 served by the backup; the cheap provider was tried 5 times, then its breaker opened and it was skipped |
+
+Of 22 requests, 14 were answered by a paid provider, 6 by the cache, and 2 were refused. Run it with `make test`.
+
+LLM Gateway Kit has no opinion about your auth, your paywall or your UI. Bring your own provider adapter; the kit handles cost and reliability.
 
 ## The three pillars
 
@@ -77,8 +100,8 @@ happen" logic in one place instead of scattered across call sites.
 
 ## Where this came from
 
-These three patterns were extracted from the LLM gateway in an iOS app that
-is currently in TestFlight beta. Semantic and vision caching serve repeat and
+These three patterns were extracted from the LLM gateway in Shelfie, an iOS
+app in closed TestFlight beta. Semantic and vision caching serve repeat and
 paraphrased requests without a paid call, the tiered cascade tries a cheaper
 model first and falls back when a provider fails or returns low confidence,
 and the budget enforcer blocks calls once a cost cap is hit. There is no
@@ -139,8 +162,8 @@ let response = try await gateway.complete(
 print(response.text)
 ```
 
-See `Sources/LLMGatewayKitDemo/main.swift` for a complete, runnable example
-(`swift run LLMGatewayKitDemo`) using mock providers so you can see the
+See `Sources/LLMGatewayKitDemo/main.swift` for the complete, runnable example
+(`make run`, or `swift run LLMGatewayKitDemo`) using mock providers so you can see the
 cache-hit/circuit-breaker/budget behavior without any real API keys.
 
 If your machine has `swiftly` installed and `swift build` fails at the link
