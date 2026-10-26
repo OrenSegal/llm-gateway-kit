@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `TraceReplayTests`: a scripted 22-request trace through `LLMGateway` that pins cache hits, budget refusals and circuit-breaker failover. The README reports its counts.
+
 ## [0.1.0] - 2026-08-01
 
 ### Added
