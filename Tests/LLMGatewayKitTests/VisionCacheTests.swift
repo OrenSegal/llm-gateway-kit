@@ -61,6 +61,15 @@ struct VisionCacheTests {
         #expect(result == nil)
     }
 
+    @Test("lookup treats an entry older than the TTL as a miss")
+    func expiredEntryIsMiss() async {
+        let imageA = Data([1])
+        let hasher = FakeHasher(hashes: [imageA: "ffffffffffffffff"])
+        let cache = VisionCache(hasher: hasher, ttl: -1, maxHammingDistance: 0)
+        await cache.store(image: imageA, response: "stale", taskType: "scan")
+        #expect(await cache.lookup(image: imageA, taskType: "scan") == nil)
+    }
+
     @Test("hammingDistance treats unequal-length hashes as maximally distant")
     func unequalLengthIsMaxDistance() {
         #expect(VisionCache.hammingDistance("ff", "ffff") == Int.max)

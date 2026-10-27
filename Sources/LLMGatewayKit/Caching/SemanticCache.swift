@@ -49,9 +49,11 @@ public actor SemanticCache {
         let queryEmbedding = await embeddingProvider.embed(prompt)
         guard !queryEmbedding.isEmpty else { return nil }
 
+        let cutoff = Date().addingTimeInterval(-ttl)
         var best: (key: String, similarity: Double)?
         for (key, entry) in cache {
-            guard entry.embeddingModel == embeddingProvider.modelIdentifier else { continue }
+            // Expired entries are misses even before evictExpired() sweeps them.
+            guard entry.storedAt > cutoff, entry.embeddingModel == embeddingProvider.modelIdentifier else { continue }
             let sim = Self.cosineSimilarity(queryEmbedding, entry.embedding)
             if sim >= similarityThreshold, best == nil || sim > best!.similarity {
                 best = (key, sim)

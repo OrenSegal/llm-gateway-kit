@@ -53,8 +53,11 @@ public actor VisionCache {
 
     public func lookup(image: Data, taskType: String) async -> String? {
         let queryHash = await hasher.hash(image)
+        let cutoff = Date().addingTimeInterval(-ttl)
+        // Expired entries are misses even before evictExpired() sweeps them.
         guard let index = cache.firstIndex(where: {
-            $0.taskType == taskType && Self.hammingDistance($0.hash, queryHash) <= maxHammingDistance
+            $0.storedAt > cutoff && $0.taskType == taskType
+                && Self.hammingDistance($0.hash, queryHash) <= maxHammingDistance
         }) else {
             return nil
         }
