@@ -1,10 +1,13 @@
 import Foundation
 
-/// Hard daily USD spend cap on LLM calls, enforced *before* the call is
-/// made (not just tracked after the fact). This is the piece that turns "we
-/// have a cost dashboard" into "a runaway loop or an abusive user literally
-/// cannot spend past the cap" — the check runs pre-flight and calls are
-/// refused, not merely logged, once the budget is exhausted.
+/// Daily USD spend cap on LLM calls, checked *before* the call is made (not
+/// just tracked after the fact). Once recorded spend reaches the cap, further
+/// calls are refused, not merely logged, which stops a runaway loop or an
+/// abusive user from running up costs indefinitely. The cap is soft under
+/// concurrency: spend is recorded after each call finishes, so calls that
+/// start together can all pass the check and overshoot the cap by the cost
+/// of the calls in flight. The pre-flight cost is also an estimate, so a
+/// single call can cost more than it was checked for.
 ///
 /// Supports a simple two-tier policy out of the box (identified vs
 /// anonymous users get different caps, mirroring the common shape of "signed

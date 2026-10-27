@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: `SemanticCache` (embedding-similarity text response cache),
   `VisionCache` (perceptual-hash image response cache), `CircuitBreaker` +
   `TieredCascade` (per-provider circuit breakers with confidence-based
-  quality escalation), `BudgetEnforcer` (hard daily USD spend caps,
+  quality escalation), `BudgetEnforcer` (daily USD spend caps,
   identified/anonymous tiers, and arbitrary per-scope envelopes),
   `LLMGate`/`CompositeLLMGate` (composable pre-flight gate chain), and
   `LLMGateway` (the orchestrator tying all of the above together).

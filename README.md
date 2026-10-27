@@ -146,7 +146,7 @@ let cascade = TieredCascade(tiers: [
     // CascadeTier(provider: MyStrongerBackupProvider()),
 ])
 
-// 3. Set a hard daily budget cap.
+// 3. Set a daily budget cap (see Limitations: concurrent calls can overshoot it).
 let budget = BudgetEnforcer(identifiedDailyCapUSD: 5.0, anonymousDailyCapUSD: 0.50)
 
 // 4. (Optional) Add semantic caching: implement EmbeddingProvider once.

@@ -3,7 +3,7 @@ import LLMGatewayKit
 
 // ─── LLMGatewayKit quickstart demo ───────────────────────────────────────
 // A minimal, runnable example showing the three pillars wired together:
-// semantic caching, a tiered circuit-broken provider cascade, and hard
+// semantic caching, a tiered circuit-broken provider cascade, and daily
 // budget enforcement. Everything here is a mock/in-memory stand-in for a
 // real vendor SDK — swap `MockLLMProvider` for a thin adapter around
 // OpenAI/Anthropic/Gemini/your-own-model and the rest of the gateway is
@@ -61,7 +61,7 @@ struct Demo {
             CascadeTier(provider: backup),
         ])
 
-        // 2. Hard budget cap — identified users get $5/day, anonymous get $0.50/day.
+        // 2. Daily budget cap (soft under concurrency) — identified users get $5/day, anonymous get $0.50/day.
         let budget = BudgetEnforcer(
             identifiedDailyCapUSD: 5.0,
             anonymousDailyCapUSD: 0.50,
