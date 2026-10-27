@@ -56,8 +56,7 @@ always misses.
 prompt whose embedding clears a cosine-similarity threshold, so paraphrased
 requests hit the cache too. `VisionCache` does the same thing for image
 calls using perceptual image hashing (Hamming distance) instead of text
-embeddings. Most starter kits only cache text chat and have nothing for
-vision/photo-analysis calls, which are frequently the larger cost center.
+embeddings.
 
 Both are pluggable: you supply your own `EmbeddingProvider` and
 `PerceptualHasher` implementations, so the cache works with whatever
@@ -75,16 +74,17 @@ to the next tier when:
 - the response comes back with a confidence score below that tier's floor
   (a *quality* escalation, not just a *failure* escalation)
 
-Most calls resolve on the cheap tier. Only the ones that actually need it
-escalate, so average cost per call stays close to the cheap tier's price
-while reliability tracks the expensive tier's ceiling.
+A call that resolves on the cheap tier costs the cheap tier's price; only
+calls that fail or come back below the floor escalate. How many calls
+escalate depends on your traffic and is not measured here.
 
-### 3. Hard budget enforcement
+### 3. Budget enforcement
 
 `BudgetEnforcer` is a **pre-flight** check, not a post-hoc dashboard. It
-denies a call before it happens once a daily USD cap is hit. A runaway
-loop or an abusive/anonymous session cannot spend past the cap, because the
-check runs before the request goes out, not after. Ships with:
+denies a call before it happens once a daily USD cap is hit. Once the cap
+is reached, a runaway loop or an abusive/anonymous session gets no more
+calls, because the check runs before the request goes out. Calls that start
+together can still overshoot the cap (see Limitations). Ships with:
 
 - separate daily caps for identified vs. anonymous callers (anonymous
   traffic typically needs a much smaller ceiling than authenticated users)
