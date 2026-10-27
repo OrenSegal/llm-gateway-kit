@@ -56,6 +56,14 @@ struct SemanticCacheTests {
         #expect(await cache.count == 0)
     }
 
+    @Test("lookup treats an entry older than the TTL as a miss")
+    func expiredEntryIsMiss() async {
+        let provider = FakeEmbeddingProvider(vectors: ["hello": [1, 0, 0]])
+        let cache = SemanticCache(embeddingProvider: provider, ttl: -1, similarityThreshold: 0.9)
+        await cache.store(prompt: "hello", response: "world")
+        #expect(await cache.lookup(prompt: "hello") == nil)
+    }
+
     @Test("an empty embedding never produces a stored entry")
     func emptyEmbeddingSkipsStore() async {
         let provider = FakeEmbeddingProvider(vectors: [:])
