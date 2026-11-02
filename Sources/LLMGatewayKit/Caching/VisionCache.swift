@@ -19,10 +19,13 @@ public protocol PerceptualHasher: Sendable {
 /// perceptual hash of the image, so two photos of the same physical scene
 /// (retaken, re-cropped, recompressed) can still hit the cache even though
 /// their bytes differ, using Hamming distance between hashes as the
-/// similarity metric instead of cosine similarity.
+/// similarity metric instead of cosine similarity. The hash decides whether
+/// it's the same picture; the prompt and `taskType` must match exactly, so a
+/// different question about the same picture is a miss.
 public actor VisionCache {
     private struct CacheEntry {
         let hash: String
+        let prompt: String
         let response: String
         let taskType: String
         let storedAt: Date
@@ -51,12 +54,12 @@ public actor VisionCache {
         self.maxHammingDistance = maxHammingDistance
     }
 
-    public func lookup(image: Data, taskType: String) async -> String? {
+    public func lookup(image: Data, prompt: String, taskType: String) async -> String? {
         let queryHash = await hasher.hash(image)
         let cutoff = Date().addingTimeInterval(-ttl)
         // Expired entries are misses even before evictExpired() sweeps them.
         guard let index = cache.firstIndex(where: {
-            $0.storedAt > cutoff && $0.taskType == taskType
+            $0.storedAt > cutoff && $0.prompt == prompt && $0.taskType == taskType
                 && Self.hammingDistance($0.hash, queryHash) <= maxHammingDistance
         }) else {
             return nil
@@ -65,9 +68,9 @@ public actor VisionCache {
         return cache[index].response
     }
 
-    public func store(image: Data, response: String, taskType: String) async {
+    public func store(image: Data, prompt: String, response: String, taskType: String) async {
         let hash = await hasher.hash(image)
-        cache.append(CacheEntry(hash: hash, response: response, taskType: taskType, storedAt: Date(), hitCount: 0))
+        cache.append(CacheEntry(hash: hash, prompt: prompt, response: response, taskType: taskType, storedAt: Date(), hitCount: 0))
     }
 
     public func evictExpired() async {

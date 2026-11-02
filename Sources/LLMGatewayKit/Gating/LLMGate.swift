@@ -64,7 +64,8 @@ public struct CompositeLLMGate: LLMGate, Sendable {
 // MARK: - Built-in gates
 
 /// Wraps a `BudgetEnforcer` as a gate so it can compose with other checks in
-/// a `CompositeLLMGate` chain.
+/// a `CompositeLLMGate` chain. This is a read that holds nothing: `LLMGateway`
+/// enforces the cap with its own reservation whether or not this gate is used.
 public struct BudgetGate: LLMGate {
     public let identifier = "budget"
     private let enforcer: BudgetEnforcer
@@ -82,7 +83,8 @@ public struct BudgetGate: LLMGate {
     }
 }
 
-/// Wraps a `CircuitBreaker` as a gate.
+/// Wraps a `CircuitBreaker` as a gate. It only looks at the breaker, so the
+/// half-open probe stays free for the call that follows.
 public struct CircuitBreakerGate: LLMGate {
     public let identifier = "circuitBreaker"
     private let breaker: CircuitBreaker
@@ -94,7 +96,7 @@ public struct CircuitBreakerGate: LLMGate {
     }
 
     public func evaluate(context: LLMGateContext) async -> LLMGateDecision {
-        await breaker.canAttempt() ? .allow : .deny(gate: identifier, reason: "circuitOpen:\(providerID)")
+        await breaker.wouldAllowAttempt() ? .allow : .deny(gate: identifier, reason: "circuitOpen:\(providerID)")
     }
 }
 
