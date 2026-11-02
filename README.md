@@ -119,7 +119,7 @@ Swift Package Manager, via Xcode (File → Add Package Dependencies) or in
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/OrenSegal/llm-gateway-kit.git", from: "0.1.0")
+    .package(url: "https://github.com/OrenSegal/llm-gateway-kit.git", from: "0.2.0")
 ]
 ```
 
