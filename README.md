@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Swift](https://img.shields.io/badge/swift-5.10%2B-orange)](Package.swift)
 
-A Swift package that sits between an app and its LLM providers and handles cost and reliability. It was extracted from the LLM gateway in Shelfie, my kitchen-inventory iOS app (closed TestFlight beta).
+A Swift package that sits between an app and its LLM providers and handles cost and reliability. Its patterns come from the LLM gateway in Shelfie, my kitchen-inventory iOS app (closed TestFlight beta). Shelfie runs its own server-side gateway and does not use this package.
 
 - **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no paid call.
 - **Circuit breaker.** Each provider gets a breaker that opens after 5 straight failures (configurable), and `TieredCascade` sends traffic to the next provider instead of retrying a dead one.
@@ -100,7 +100,7 @@ happen" logic in one place instead of scattered across call sites.
 
 ## Where this came from
 
-These three patterns were extracted from the LLM gateway in Shelfie, an iOS
+These three patterns come from the LLM gateway in Shelfie, an iOS
 app in closed TestFlight beta. Semantic and vision caching serve repeat and
 paraphrased requests without a paid call, the tiered cascade tries a cheaper
 model first and falls back when a provider fails or returns low confidence,
@@ -178,6 +178,8 @@ force Xcode's toolchain instead.
 - **The pre-flight estimate is rough.** It prices the request at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier costs more than it was checked for.
 - **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
 - **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries are never served but still take memory until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.
+- **The vision cache ignores the prompt.** It keys on the image and `taskType`, so a different question about the same image under the same task returns the cached answer. Use a separate `taskType` per question.
+- **Recorded spend can under-count.** An escalated call records only the final tier, the price lookup can miss when a provider's `modelID` differs from its `identifier` (`LLMGateway.swift:107`), and a call where every tier returns low confidence records nothing.
 - **The semantic cache keys on the prompt text only.** It ignores `taskType`, so similar prompts sent for different tasks can share a cached answer (`VisionCache` does separate by `taskType`). The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
 
 ## What this is not
