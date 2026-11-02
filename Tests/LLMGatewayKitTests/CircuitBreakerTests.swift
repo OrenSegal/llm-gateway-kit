@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import LLMGatewayKit
 
@@ -73,5 +74,78 @@ struct CircuitBreakerTests {
             Issue.record("unexpected error: \(error)")
         }
         #expect(await invoked.value == false)
+    }
+
+    @Test("half-open allows exactly one of several concurrent probes")
+    func halfOpenAllowsOneProbe() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: Self.recovery)
+        await breaker.recordFailure()
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+
+        #expect(await Self.grantedAttempts(breaker, callers: 5) == 1)
+        #expect(await breaker.state == .halfOpen)
+    }
+
+    @Test("a probe that never reports stops blocking after the recovery interval")
+    func abandonedProbeTimesOut() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: Self.recovery)
+        await breaker.recordFailure()
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+        #expect(await breaker.canAttempt())
+        #expect(await breaker.canAttempt() == false)
+
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+        #expect(await Self.grantedAttempts(breaker, callers: 5) == 1)
+    }
+
+    @Test("a failed probe reopens and waits out the full recovery interval")
+    func failedProbeReopens() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: Self.recovery)
+        await breaker.recordFailure()
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+        #expect(await breaker.canAttempt())
+
+        await breaker.recordFailure()
+        #expect(await breaker.state == .open)
+        #expect(await breaker.canAttempt() == false)
+    }
+
+    @Test("a successful probe closes the circuit for everyone")
+    func successfulProbeCloses() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: Self.recovery)
+        await breaker.recordFailure()
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+        #expect(await breaker.canAttempt())
+
+        await breaker.recordSuccess()
+        #expect(await Self.grantedAttempts(breaker, callers: 5) == 5)
+    }
+
+    @Test("a CircuitBreakerGate on a cascade's breaker leaves the probe for the cascade")
+    func gateDoesNotConsumeProbe() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: Self.recovery)
+        await breaker.recordFailure()
+        try await Task.sleep(nanoseconds: Self.pastRecovery)
+        let gate = CircuitBreakerGate(breaker: breaker, providerID: "p")
+
+        #expect(await gate.evaluate(context: LLMGateContext()).isAllowed)
+        #expect(await breaker.canAttempt(), "the gate only looked, so the probe is still free")
+        #expect(await gate.evaluate(context: LLMGateContext()).isAllowed == false)
+    }
+
+    // Long enough that a slow CI machine won't let the interval lapse between
+    // two calls in a test that expects it not to have.
+    private static let recovery: TimeInterval = 0.3
+    private static let pastRecovery: UInt64 = 350_000_000
+
+    private static func grantedAttempts(_ breaker: CircuitBreaker, callers: Int) async -> Int {
+        await withTaskGroup(of: Bool.self) { group in
+            for _ in 0..<callers {
+                group.addTask { await breaker.canAttempt() }
+            }
+            var granted = 0
+            for await ok in group where ok { granted += 1 }
+            return granted
+        }
     }
 }
