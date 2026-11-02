@@ -3,7 +3,8 @@ import Foundation
 /// Classic circuit breaker for a single upstream (an LLM provider, or any
 /// failure-prone dependency). Opens after `failureThreshold` consecutive
 /// failures, then refuses further attempts until `recoveryInterval` has
-/// elapsed, at which point it allows exactly one half-open probe.
+/// elapsed, at which point it allows half-open probes until one records a
+/// result. Concurrent callers can all probe in that window.
 ///
 /// `LLMGatewayKit` gives every provider in a `TieredCascade` its own
 /// breaker, so one struggling provider "opens" independently and traffic
