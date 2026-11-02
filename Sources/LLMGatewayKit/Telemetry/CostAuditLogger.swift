@@ -50,8 +50,9 @@ public actor CostAuditLogger {
         return entries
     }
 
-    /// Convenience rollup: fraction of served entries that came from a cache
+    /// Convenience rollup: fraction of entries that came from a cache
     /// rather than a paid provider call, since the buffer was last drained.
+    /// Each paid call is its own entry, so an escalated request counts more than once.
     public func cacheHitRate() -> Double {
         guard !pending.isEmpty else { return 0 }
         let hits = pending.filter { $0.source != .provider }.count

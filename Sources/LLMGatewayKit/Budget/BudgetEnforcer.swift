@@ -1,19 +1,28 @@
 import Foundation
 
-/// Daily USD spend cap on LLM calls, checked *before* the call is made (not
-/// just tracked after the fact). Once recorded spend reaches the cap, further
-/// calls are refused, not merely logged, which stops a runaway loop or an
-/// abusive user from running up costs indefinitely. The cap is soft under
-/// concurrency: spend is recorded after each call finishes, so calls that
-/// start together can all pass the check and overshoot the cap by the cost
-/// of the calls in flight. The pre-flight cost is also an estimate, so a
-/// single call can cost more than it was checked for.
+/// Daily USD spend cap on LLM calls, enforced *before* the call is made (not
+/// just tracked after the fact). Each call reserves its estimated cost first,
+/// so calls that start together can't all pass, and once spend plus live
+/// reservations would cross the cap, further calls are refused, not merely
+/// logged, which stops a runaway loop or an abusive user from running up costs
+/// indefinitely. The reservation is an estimate, so a single call can cost more
+/// than it reserved and take spend past the cap by that difference.
 ///
 /// Supports a simple two-tier policy out of the box (identified vs
 /// anonymous users get different caps, mirroring the common shape of "signed
 /// in users get a bigger budget than anonymous/trial traffic") and a general
 /// per-scope cap for anything else (per feature, per task type, per org).
+///
+/// Scoped caps are check-then-record with no reservation, so calls that start
+/// together can all pass a scoped `canSpend`.
 public actor BudgetEnforcer {
+    /// A hold on part of a daily cap, returned by `reserve`. It remembers its
+    /// day, so a call that crosses midnight UTC releases the right one.
+    public struct Reservation: Sendable {
+        fileprivate let key: String
+        fileprivate let amountUSD: Double
+    }
+
     private let store: BudgetStore
     private let identifiedDailyCapUSD: Double
     private let anonymousDailyCapUSD: Double
@@ -39,12 +48,28 @@ public actor BudgetEnforcer {
         self.keyPrefix = keyPrefix
     }
 
-    /// Pre-flight check: would spending `estimatedCostUSD` more today stay
-    /// within the caller's cap? Call this BEFORE making the LLM request.
+    /// Read-only check: would spending `estimatedCostUSD` more today stay within
+    /// the caller's cap? It holds nothing and doesn't see other calls' holds, so
+    /// use `reserve` when the answer decides whether to make a paid request.
     public func canSpend(estimatedCostUSD: Double, isAnonymous: Bool) async -> Bool {
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
         let used = await store.spend(forKey: todayKey(isAnonymous: isAnonymous))
         return (used + estimatedCostUSD) <= cap
+    }
+
+    /// Atomically holds `estimatedCostUSD` against the caller's cap, or returns
+    /// `nil` if that would cross it. Call this BEFORE making the LLM request,
+    /// `record` what the request really cost, then `release` the hold, on
+    /// failure too.
+    public func reserve(estimatedCostUSD: Double, isAnonymous: Bool) async -> Reservation? {
+        let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
+        let key = todayKey(isAnonymous: isAnonymous)
+        guard await store.reserve(estimatedCostUSD, capUSD: cap, forKey: key) else { return nil }
+        return Reservation(key: key, amountUSD: estimatedCostUSD)
+    }
+
+    public func release(_ reservation: Reservation) async {
+        await store.release(reservation.amountUSD, forKey: reservation.key)
     }
 
     /// Record actual spend after a call completes. Call this with the real

@@ -46,6 +46,18 @@ struct SemanticCacheTests {
         #expect(result == "a password reset link was sent")
     }
 
+    @Test("the same prompt in two scopes keeps two entries that never cross")
+    func scopesAreSeparate() async {
+        let provider = FakeEmbeddingProvider(vectors: ["hello": [1, 0, 0]])
+        let cache = SemanticCache(embeddingProvider: provider, similarityThreshold: 0.9)
+        await cache.store(prompt: "hello", response: "from a", scope: "a")
+        await cache.store(prompt: "hello", response: "from b", scope: "b")
+        #expect(await cache.count == 2)
+        #expect(await cache.lookup(prompt: "hello", scope: "a") == "from a")
+        #expect(await cache.lookup(prompt: "hello", scope: "b") == "from b")
+        #expect(await cache.lookup(prompt: "hello") == nil)
+    }
+
     @Test("evictExpired removes entries older than the TTL")
     func evictsExpired() async {
         let provider = FakeEmbeddingProvider(vectors: ["hello": [1, 0, 0]])

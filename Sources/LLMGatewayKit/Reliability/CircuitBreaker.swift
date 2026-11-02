@@ -3,8 +3,9 @@ import Foundation
 /// Classic circuit breaker for a single upstream (an LLM provider, or any
 /// failure-prone dependency). Opens after `failureThreshold` consecutive
 /// failures, then refuses further attempts until `recoveryInterval` has
-/// elapsed, at which point it allows half-open probes until one records a
-/// result. Concurrent callers can all probe in that window.
+/// elapsed, at which point it allows exactly one half-open probe at a time.
+/// A probe that never records a result stops blocking after another
+/// `recoveryInterval`, when the next caller becomes the probe.
 ///
 /// `LLMGatewayKit` gives every provider in a `TieredCascade` its own
 /// breaker, so one struggling provider "opens" independently and traffic
@@ -16,6 +17,7 @@ public actor CircuitBreaker {
     private(set) public var state: State = .closed
     private var failureCount: Int = 0
     private var lastFailureDate: Date?
+    private var probeStartedAt: Date?
     private let failureThreshold: Int
     private let recoveryInterval: TimeInterval
 
@@ -28,31 +30,41 @@ public actor CircuitBreaker {
     /// Transitions `open` → `halfOpen` as a side effect once the recovery
     /// interval has elapsed, so callers should treat this as the single
     /// source of truth immediately before every attempt (don't cache it).
+    /// Outside `closed`, a `true` makes the caller the probe: it must make the
+    /// call and report back with `recordSuccess` or `recordFailure`.
     public func canAttempt() -> Bool {
-        switch state {
-        case .closed:
-            return true
-        case .open:
-            guard let lastFailure = lastFailureDate,
-                  Date().timeIntervalSince(lastFailure) >= recoveryInterval else {
-                return false
-            }
+        guard wouldAllowAttempt() else { return false }
+        if state != .closed {
             state = .halfOpen
-            return true
-        case .halfOpen:
-            return true
+            probeStartedAt = Date()
         }
+        return true
+    }
+
+    /// Whether `canAttempt()` would currently return `true`, without taking the
+    /// probe. For callers that only look and won't make the call themselves.
+    public func wouldAllowAttempt() -> Bool {
+        let waitingSince: Date?
+        switch state {
+        case .closed: return true
+        case .open: waitingSince = lastFailureDate
+        case .halfOpen: waitingSince = probeStartedAt
+        }
+        guard let waitingSince else { return false }
+        return Date().timeIntervalSince(waitingSince) >= recoveryInterval
     }
 
     public func recordSuccess() {
         failureCount = 0
         lastFailureDate = nil
+        probeStartedAt = nil
         state = .closed
     }
 
     public func recordFailure() {
         failureCount += 1
         lastFailureDate = Date()
+        probeStartedAt = nil
         if failureCount >= failureThreshold {
             state = .open
         }
@@ -61,6 +73,7 @@ public actor CircuitBreaker {
     public func reset() {
         failureCount = 0
         lastFailureDate = nil
+        probeStartedAt = nil
         state = .closed
     }
 

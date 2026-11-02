@@ -6,7 +6,7 @@ A Swift package that sits between an app and its LLM providers and handles cost 
 
 - **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no paid call.
 - **Circuit breaker.** Each provider gets a breaker that opens after 5 straight failures (configurable), and `TieredCascade` sends traffic to the next provider instead of retrying a dead one.
-- **Spend limits.** `BudgetEnforcer` checks a daily USD cap before each call, with separate caps for signed-in and anonymous callers, and refuses the call once the cap is reached.
+- **Spend limits.** `BudgetEnforcer` reserves each call's estimated cost against a daily USD cap before the call goes out, with separate caps for signed-in and anonymous callers, and refuses the call if that would cross the cap.
 
 Run the demo (macOS with Xcode, no API keys, mock providers):
 
@@ -80,23 +80,27 @@ escalate depends on your traffic and is not measured here.
 
 ### 3. Budget enforcement
 
-`BudgetEnforcer` is a **pre-flight** check, not a post-hoc dashboard. It
-denies a call before it happens once a daily USD cap is hit. Once the cap
-is reached, a runaway loop or an abusive/anonymous session gets no more
-calls, because the check runs before the request goes out. Calls that start
-together can still overshoot the cap (see Limitations). Ships with:
+`BudgetEnforcer` is a **pre-flight** check, not a post-hoc dashboard. Each
+call reserves its estimated cost against a daily USD cap in one atomic step
+before the request goes out, then records what it really cost and gives the
+reservation back, on failure too. Calls that start together count against
+each other, so a runaway loop, a burst or an abusive/anonymous session gets
+refused at the cap. Estimates are rough, so a call can cost more than it
+reserved (see Limitations). Ships with:
 
 - separate daily caps for identified vs. anonymous callers (anonymous
   traffic typically needs a much smaller ceiling than authenticated users)
 - arbitrary per-scope envelopes (e.g. a smaller sub-budget just for vision
   calls, or per feature/task type)
 - a pluggable `BudgetStore` (`UserDefaults` by default; swap in a
-  server-backed store if spend needs to be authoritative across devices)
+  server-backed store if spend needs to be authoritative across devices, and
+  make its `reserve` atomic there too)
 
 All three pillars compose through `LLMGate`/`CompositeLLMGate`, a
 short-circuiting chain of pre-flight checks (budget, circuit state, your own
 kill switches/entitlement checks) that keeps the "should this call even
-happen" logic in one place instead of scattered across call sites.
+happen" logic in one place instead of scattered across call sites. `LLMGateway`
+enforces the budget it is given whether or not the chain includes `BudgetGate`.
 
 ## Where this came from
 
@@ -146,7 +150,7 @@ let cascade = TieredCascade(tiers: [
     // CascadeTier(provider: MyStrongerBackupProvider()),
 ])
 
-// 3. Set a daily budget cap (see Limitations: concurrent calls can overshoot it).
+// 3. Set a daily budget cap.
 let budget = BudgetEnforcer(identifiedDailyCapUSD: 5.0, anonymousDailyCapUSD: 0.50)
 
 // 4. (Optional) Add semantic caching: implement EmbeddingProvider once.
@@ -174,13 +178,14 @@ force Xcode's toolchain instead.
 
 ## Limitations
 
-- **The budget cap is soft under concurrency.** `LLMGateway` checks the cap, sends the request, and records the real cost afterwards. Calls that start at the same time can all pass the check before any of them records spend, so a burst can overshoot the cap by the cost of the calls in flight.
-- **The pre-flight estimate is rough.** It prices the request at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier costs more than it was checked for.
+- **Spend can pass the cap by the error in the estimate.** A call reserves a rough estimate priced at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier, or uses more tokens than estimated, costs more than it reserved, and spend can pass the cap by that difference. Calls after that are refused.
 - **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
+- **Reservations are only atomic inside one store.** The built-in stores hold them in memory, so separate store instances, processes and devices don't see each other's. A server-backed store has to make `reserve` atomic itself, and needs its own expiry for holds left by a client that died mid-call.
+- **Scoped envelopes don't reserve.** `canSpend(estimatedCostUSD:scope:capUSD:)` is check-then-record, so calls that start together can all pass it and overshoot a scoped cap by the cost of the calls in flight.
+- **A provider call that throws records nothing.** There is no usage to price, so if a vendor bills for a failed call, that cost isn't counted. Recorded cost is whatever your provider's `estimatedCostUSD` computes from the usage it reports.
 - **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries are never served but still take memory until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.
-- **The vision cache ignores the prompt.** It keys on the image and `taskType`, so a different question about the same image under the same task returns the cached answer. Use a separate `taskType` per question.
-- **Recorded spend can under-count.** An escalated call records only the final tier, the price lookup can miss when a provider's `modelID` differs from its `identifier` (`LLMGateway.swift:107`), and a call where every tier returns low confidence records nothing.
-- **The semantic cache keys on the prompt text only.** It ignores `taskType`, so similar prompts sent for different tasks can share a cached answer (`VisionCache` does separate by `taskType`). The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
+- **Cache keys have limits.** `LLMGateway` separates cached answers by task type, `maxOutputTokens` and the list of tiers in the cascade. It doesn't know which tier answered, so an answer from a backup tier is reused for that whole cascade. The vision cache compares prompts as exact text, so a reworded question about the same image is a paid call. If you call `SemanticCache` directly, pass your own `scope`. The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
+- **A `recoveryInterval` of 0 removes the probe limit.** The half-open timeout equals `recoveryInterval`, so at 0 every caller counts as replacing a timed-out probe.
 
 ## What this is not
 
