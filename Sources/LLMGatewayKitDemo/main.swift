@@ -61,7 +61,7 @@ struct Demo {
             CascadeTier(provider: backup),
         ])
 
-        // 2. Daily budget cap (soft under concurrency) — identified users get $5/day, anonymous get $0.50/day.
+        // 2. Daily budget cap — identified users get $5/day, anonymous get $0.50/day.
         let budget = BudgetEnforcer(
             identifiedDailyCapUSD: 5.0,
             anonymousDailyCapUSD: 0.50,

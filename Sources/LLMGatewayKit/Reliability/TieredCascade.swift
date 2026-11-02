@@ -42,8 +42,13 @@ public struct TieredCascade: Sendable {
     /// Attempts each tier in order. Returns the first response that either
     /// has no confidence signal or clears its tier's confidence floor.
     /// Throws `LLMGatewayError.allProvidersFailed` only if every tier either
-    /// had an open breaker or threw.
-    public func send(_ request: LLMRequest) async throws -> LLMResponse {
+    /// had an open breaker or threw, or returned below its floor.
+    ///
+    /// - Parameter onSpend: Called with the cost of each provider call that
+    ///   returned a response, priced by the provider that made it, including
+    ///   low-confidence responses the cascade then discards. A call that threw
+    ///   reports nothing, because there is no usage to price.
+    public func send(_ request: LLMRequest, onSpend: @Sendable (Double) async -> Void = { _ in }) async throws -> LLMResponse {
         var lastError: Error?
         for tier in tiers {
             guard await tier.breaker.canAttempt() else {
@@ -52,6 +57,10 @@ public struct TieredCascade: Sendable {
             }
             do {
                 let response = try await tier.provider.send(request)
+                await onSpend(tier.provider.estimatedCostUSD(
+                    inputTokens: response.usage.inputTokens,
+                    outputTokens: response.usage.billedOutputTokens
+                ))
                 await tier.breaker.recordSuccess()
                 if let floor = tier.confidenceFloor, let confidence = response.confidence, confidence < floor {
                     // Quality escalation: this tier "succeeded" but isn't

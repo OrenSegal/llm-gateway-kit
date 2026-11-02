@@ -10,9 +10,18 @@ import Foundation
 /// too. How much this saves depends on how often your app's prompts repeat
 /// in meaning even when the exact wording varies.
 ///
+/// A `scope` separates requests whose answers differ even for the same prompt,
+/// such as a different model or task. Entries only match within their scope.
+/// `LLMGateway` sets it from the request and its cascade.
+///
 /// Thread-safe via `actor` isolation — safe to share one instance across
 /// concurrent requests.
 public actor SemanticCache {
+    private struct CacheKey: Hashable {
+        let scope: String
+        let prompt: String
+    }
+
     private struct CacheEntry {
         let embedding: [Float]
         let embeddingModel: String
@@ -23,7 +32,7 @@ public actor SemanticCache {
     private let embeddingProvider: EmbeddingProvider
     private let ttl: TimeInterval
     private let similarityThreshold: Double
-    private var cache: [String: CacheEntry] = [:]
+    private var cache: [CacheKey: CacheEntry] = [:]
 
     /// - Parameters:
     ///   - embeddingProvider: Buyer-supplied embedding backend.
@@ -45,15 +54,15 @@ public actor SemanticCache {
     /// Returns a cached response for a semantically similar prior prompt, or
     /// `nil` on a miss. Never throws — an embedding failure degrades to a
     /// cache miss rather than failing the caller's request.
-    public func lookup(prompt: String) async -> String? {
+    public func lookup(prompt: String, scope: String = "") async -> String? {
         let queryEmbedding = await embeddingProvider.embed(prompt)
         guard !queryEmbedding.isEmpty else { return nil }
 
         let cutoff = Date().addingTimeInterval(-ttl)
-        var best: (key: String, similarity: Double)?
+        var best: (key: CacheKey, similarity: Double)?
         for (key, entry) in cache {
             // Expired entries are misses even before evictExpired() sweeps them.
-            guard entry.storedAt > cutoff, entry.embeddingModel == embeddingProvider.modelIdentifier else { continue }
+            guard key.scope == scope, entry.storedAt > cutoff, entry.embeddingModel == embeddingProvider.modelIdentifier else { continue }
             let sim = Self.cosineSimilarity(queryEmbedding, entry.embedding)
             if sim >= similarityThreshold, best == nil || sim > best!.similarity {
                 best = (key, sim)
@@ -63,10 +72,10 @@ public actor SemanticCache {
         return cache[best.key]?.response
     }
 
-    public func store(prompt: String, response: String) async {
+    public func store(prompt: String, response: String, scope: String = "") async {
         let embedding = await embeddingProvider.embed(prompt)
         guard !embedding.isEmpty else { return }
-        cache[prompt] = CacheEntry(
+        cache[CacheKey(scope: scope, prompt: prompt)] = CacheEntry(
             embedding: embedding,
             embeddingModel: embeddingProvider.modelIdentifier,
             response: response,

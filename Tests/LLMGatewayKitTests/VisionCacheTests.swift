@@ -17,8 +17,8 @@ struct VisionCacheTests {
         let imageA = Data([1, 2, 3])
         let hasher = FakeHasher(hashes: [imageA: "ffffffffffffffff"])
         let cache = VisionCache(hasher: hasher, maxHammingDistance: 0)
-        await cache.store(image: imageA, response: "a can of beans", taskType: "scan")
-        let result = await cache.lookup(image: imageA, taskType: "scan")
+        await cache.store(image: imageA, prompt: "q", response: "a can of beans", taskType: "scan")
+        let result = await cache.lookup(image: imageA, prompt: "q", taskType: "scan")
         #expect(result == "a can of beans")
     }
 
@@ -32,8 +32,8 @@ struct VisionCacheTests {
             imageB: "fffffffffffffff0",
         ])
         let cache = VisionCache(hasher: hasher, maxHammingDistance: 10)
-        await cache.store(image: imageA, response: "same scene, recompressed", taskType: "scan")
-        let result = await cache.lookup(image: imageB, taskType: "scan")
+        await cache.store(image: imageA, prompt: "q", response: "same scene, recompressed", taskType: "scan")
+        let result = await cache.lookup(image: imageB, prompt: "q", taskType: "scan")
         #expect(result == "same scene, recompressed")
     }
 
@@ -46,9 +46,19 @@ struct VisionCacheTests {
             imageB: "0000000000000000",
         ])
         let cache = VisionCache(hasher: hasher, maxHammingDistance: 10)
-        await cache.store(image: imageA, response: "unrelated", taskType: "scan")
-        let result = await cache.lookup(image: imageB, taskType: "scan")
+        await cache.store(image: imageA, prompt: "q", response: "unrelated", taskType: "scan")
+        let result = await cache.lookup(image: imageB, prompt: "q", taskType: "scan")
         #expect(result == nil)
+    }
+
+    @Test("the prompt partitions the cache")
+    func promptPartitions() async {
+        let imageA = Data([1])
+        let hasher = FakeHasher(hashes: [imageA: "ffffffffffffffff"])
+        let cache = VisionCache(hasher: hasher, maxHammingDistance: 10)
+        await cache.store(image: imageA, prompt: "count the eggs", response: "12", taskType: "scan")
+        #expect(await cache.lookup(image: imageA, prompt: "list allergens", taskType: "scan") == nil)
+        #expect(await cache.lookup(image: imageA, prompt: "count the eggs", taskType: "scan") == "12")
     }
 
     @Test("task type partitions the cache")
@@ -56,8 +66,8 @@ struct VisionCacheTests {
         let imageA = Data([1])
         let hasher = FakeHasher(hashes: [imageA: "ffffffffffffffff"])
         let cache = VisionCache(hasher: hasher, maxHammingDistance: 10)
-        await cache.store(image: imageA, response: "scan result", taskType: "scan")
-        let result = await cache.lookup(image: imageA, taskType: "ocr")
+        await cache.store(image: imageA, prompt: "q", response: "scan result", taskType: "scan")
+        let result = await cache.lookup(image: imageA, prompt: "q", taskType: "ocr")
         #expect(result == nil)
     }
 
@@ -66,8 +76,8 @@ struct VisionCacheTests {
         let imageA = Data([1])
         let hasher = FakeHasher(hashes: [imageA: "ffffffffffffffff"])
         let cache = VisionCache(hasher: hasher, ttl: -1, maxHammingDistance: 0)
-        await cache.store(image: imageA, response: "stale", taskType: "scan")
-        #expect(await cache.lookup(image: imageA, taskType: "scan") == nil)
+        await cache.store(image: imageA, prompt: "q", response: "stale", taskType: "scan")
+        #expect(await cache.lookup(image: imageA, prompt: "q", taskType: "scan") == nil)
     }
 
     @Test("hammingDistance treats unequal-length hashes as maximally distant")
