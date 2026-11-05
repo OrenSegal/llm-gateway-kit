@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `DESIGN.md`: budget reservation, breaker states and cache keys in language-neutral pseudocode.
+
 ## [0.2.0] - 2026-11-02
 
 ### Changed
