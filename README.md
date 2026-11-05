@@ -39,7 +39,9 @@ Audit log: 3 calls, 1 served from cache, 2 hit a paid provider.
 | Spend limit | 5 anonymous questions, $0.035/day anonymous cap | 3 served, 2 refused with `dailyBudgetExceeded` before reaching a provider |
 | Outage | Cheap provider down, 7 new questions | All 7 served by the backup; the cheap provider was tried 5 times, then its breaker opened and it was skipped |
 
-Of 22 requests, 14 were answered by a paid provider, 6 by the cache, and 2 were refused. Run it with `make test`.
+Of 22 requests, 14 were answered by a paid provider, 6 by the cache, and 2 were refused. Run it with `make test`. The trace uses a toy one-hot embedding, so "reworded" here means sharing a keyword; it does not measure real paraphrase quality.
+
+Not a Swift reader? [DESIGN.md](DESIGN.md) describes the budget reservation, breaker states and cache keys in pseudocode.
 
 LLM Gateway Kit has no opinion about your auth, your paywall or your UI. Bring your own provider adapter; the kit handles cost and reliability.
 
