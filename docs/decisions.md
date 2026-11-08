@@ -1,8 +1,9 @@
 # Decisions
 
 Five choices that shape how the kit behaves. Each links the commit and the
-test that hold it in place. "Not recorded" means the history does not say
-what else was weighed.
+tests that hold it in place. The commits record what was decided, not what
+else was weighed: the alternatives below were written on 2026-11-07, and
+"not recorded" marks options nobody wrote about at the time.
 
 ## 1. Reserve the estimate before the call instead of checking, then spending
 
@@ -10,7 +11,9 @@ what else was weighed.
   then recorded the cost. Ten calls that start together all read
   "spent $0.00, cap $0.05, my cost $0.01", all pass, and the day ends at
   $0.10. The v0.1.0 tests ran calls one at a time, so they passed while the
-  cap could be overrun under concurrency. An audit found it, not a user.
+  cap could be overrun under concurrency. An audit found it, not a user; 0.1.1
+  shipped with the race disclosed in Limitations ("the budget cap is soft
+  under concurrency"), and 0.2.0 fixed it.
 - **Decision.** `reserve(amount, cap, key)` checks `spent + held + amount`
   against the cap and adds the hold in one step with no `await` inside the
   actor method. The hold is released after the call, on failure too, and
@@ -24,7 +27,7 @@ what else was weighed.
   still overshoot by the estimate's error (README, Limitations). Atomicity
   holds only inside one store; a server-backed `BudgetStore` must make
   `reserve` a transaction.
-- **Evidence.** 971be2f (PR #5, released as 0.1.1 and 0.2.0). Tests:
+- **Evidence.** 971be2f (PR #5, released in 0.2.0). Tests:
   "concurrent calls cannot pass a cap that only fits one of them",
   "each store admits exactly the reservations that fit under concurrency",
   "a failed call gives its reservation back".
