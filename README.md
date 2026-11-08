@@ -29,6 +29,24 @@ Third call, unrelated prompt (cache miss again):
 Audit log: 3 calls, 1 served from cache, 2 hit a paid provider.
 ```
 
+## How a request flows
+
+```mermaid
+flowchart LR
+    App[your app] --> GW[LLMGateway]
+    GW --> SC[SemanticCache / VisionCache]
+    SC --> EP[EmbeddingProvider / PerceptualHasher<br/>you implement]
+    GW --> G[LLMGate chain<br/>your pre-flight checks]
+    GW --> B[BudgetEnforcer]
+    B --> BS[BudgetStore<br/>UserDefaults or yours]
+    GW --> TC[TieredCascade]
+    TC --> CB[CircuitBreaker<br/>one per tier]
+    TC --> P[LLMProvider<br/>you implement]
+    GW --> L[CostAuditLogger]
+```
+
+A cache hit returns before the budget or any provider is touched. On a miss the gateway runs the gate chain, reserves the estimate, sends through the cascade and records each paid call. Pseudocode for each step is in [DESIGN.md](DESIGN.md).
+
 ## Results on a scripted trace
 
 `Tests/LLMGatewayKitTests/TraceReplayTests.swift` replays 22 requests through one `LLMGateway` and asserts every count below, so CI fails if the behavior changes. The traffic is synthetic and the providers are mocks priced at $0.01 (cheap) and $0.05 (backup) per call. It shows what each mechanism does. It is not a measurement of savings on real traffic.
@@ -41,7 +59,7 @@ Audit log: 3 calls, 1 served from cache, 2 hit a paid provider.
 
 Of 22 requests, 14 were answered by a paid provider, 6 by the cache, and 2 were refused. Run it with `make test`. The trace uses a toy one-hot embedding, so "reworded" here means sharing a keyword; it does not measure real paraphrase quality.
 
-Not a Swift reader? [DESIGN.md](DESIGN.md) describes the budget reservation, breaker states and cache keys in pseudocode.
+Not a Swift reader? [DESIGN.md](DESIGN.md) describes the budget reservation, breaker states and cache keys in pseudocode. [docs/decisions.md](docs/decisions.md) records five design decisions, including the v0.1.0 budget race the reservation fixes.
 
 LLM Gateway Kit has no opinion about your auth, your paywall or your UI. Bring your own provider adapter; the kit handles cost and reliability.
 
@@ -106,12 +124,16 @@ enforces the budget it is given whether or not the chain includes `BudgetGate`.
 
 ## Where this came from
 
-These three patterns come from the LLM gateway in Shelfie, an iOS
-app in closed TestFlight beta. Semantic and vision caching serve repeat and
-paraphrased requests without a paid call, the tiered cascade tries a cheaper
-model first and falls back when a provider fails or returns low confidence,
-and the budget enforcer blocks calls once a cost cap is hit. There is no
-published cost benchmark for this kit. How much it saves depends on how often
+These patterns come from Shelfie, an iOS app in closed TestFlight beta. Its
+server-side gateway (a Supabase Edge Function, not this package) has a
+semantic cache, a circuit breaker and daily spend caps with a separate
+anonymous limit; the app's own AI client also keeps a breaker and a cost cap.
+Shelfie also had a perceptual-hash vision cache and deleted it in September
+2026: it hashed a collage of product crops, two scans of the same shelf never
+produced the same collage, and it served zero hits while adding a database
+round trip before every vision call. `VisionCache` here only pays off when the
+same image really recurs; check that on your traffic before turning it on.
+There is no published cost benchmark for this kit. How much it saves depends on how often
 your traffic repeats itself and which provider(s) you're calling.
 
 ## Install
@@ -180,6 +202,9 @@ force Xcode's toolchain instead.
 
 ## Limitations
 
+- **No real provider adapter ships, and none has been run here.** The package has no networking code; every test and the demo use mock providers. Cost accuracy and failure handling against a real vendor depend on the `LLMProvider` you write.
+- **The trace is synthetic.** The 22-request replay uses scripted traffic, mock prices and a toy one-hot embedding. It shows that each mechanism fires; it measures neither savings on real traffic nor paraphrase recall of a real embedding model.
+- **No production use.** Shelfie, where these patterns come from, runs its own server-side gateway and does not import this package. I don't know of any app that does.
 - **Spend can pass the cap by the error in the estimate.** A call reserves a rough estimate priced at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier, or uses more tokens than estimated, costs more than it reserved, and spend can pass the cap by that difference. Calls after that are refused.
 - **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
 - **Reservations are only atomic inside one store.** The built-in stores hold them in memory, so separate store instances, processes and devices don't see each other's. A server-backed store has to make `reserve` atomic itself, and needs its own expiry for holds left by a client that died mid-call.
