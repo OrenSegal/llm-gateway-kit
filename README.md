@@ -124,15 +124,13 @@ enforces the budget it is given whether or not the chain includes `BudgetGate`.
 
 ## Where this came from
 
-These patterns come from Shelfie, an iOS app, pre-launch. Its
-server-side gateway (a Supabase Edge Function, not this package) has a
-semantic cache, a circuit breaker and daily spend caps with a separate
-anonymous limit; the app's own AI client also keeps a breaker and a cost cap.
-Shelfie also had a perceptual-hash vision cache and deleted it in September
-2026: it hashed a collage of product crops, two scans of the same shelf never
-produced the same collage, and it served zero hits while adding a database
-round trip before every vision call. `VisionCache` here only pays off when the
-same image really recurs; check that on your traffic before turning it on.
+These patterns come from Shelfie, an iOS app, pre-launch. Its own
+server-side gateway (not this package) has a semantic cache, a circuit
+breaker and daily spend caps; the app's AI client also keeps a breaker and a
+cost cap. One lesson from it: an image cache keyed on a composite of several
+photos almost never hits, because two captures of the same scene rarely
+produce the same composite. `VisionCache` here only pays off when the same
+image really recurs; check that on your traffic before turning it on.
 There is no published cost benchmark for this kit. How much it saves depends on how often
 your traffic repeats itself and which provider(s) you're calling.
 
