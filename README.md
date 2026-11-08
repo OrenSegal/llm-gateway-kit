@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/OrenSegal/llm-gateway-kit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Swift](https://img.shields.io/badge/swift-5.10%2B-orange)](Package.swift)
 
-A Swift package that sits between an app and its LLM providers and handles cost and reliability. Its patterns come from the LLM gateway in Shelfie, my kitchen-inventory iOS app (closed TestFlight beta). Shelfie runs its own server-side gateway and does not use this package.
+A Swift package that sits between an app and its LLM providers and handles cost and reliability. Its patterns come from the LLM gateway in Shelfie, my kitchen-inventory iOS app (pre-launch). Shelfie runs its own server-side gateway and does not use this package.
 
 - **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no paid call.
 - **Circuit breaker.** Each provider gets a breaker that opens after 5 straight failures (configurable), and `TieredCascade` sends traffic to the next provider instead of retrying a dead one.
@@ -124,7 +124,7 @@ enforces the budget it is given whether or not the chain includes `BudgetGate`.
 
 ## Where this came from
 
-These patterns come from Shelfie, an iOS app in closed TestFlight beta. Its
+These patterns come from Shelfie, an iOS app, pre-launch. Its
 server-side gateway (a Supabase Edge Function, not this package) has a
 semantic cache, a circuit breaker and daily spend caps with a separate
 anonymous limit; the app's own AI client also keeps a breaker and a cost cap.
