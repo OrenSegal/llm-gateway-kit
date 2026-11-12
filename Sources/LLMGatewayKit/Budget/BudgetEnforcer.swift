@@ -20,7 +20,7 @@ public actor BudgetEnforcer {
     /// day, so a call that crosses midnight UTC releases the right one.
     public struct Reservation: Sendable {
         fileprivate let key: String
-        fileprivate let amountUSD: Double
+        fileprivate let amount: Int64
     }
 
     private let store: BudgetStore
@@ -53,8 +53,8 @@ public actor BudgetEnforcer {
     /// use `reserve` when the answer decides whether to make a paid request.
     public func canSpend(estimatedCostUSD: Double, isAnonymous: Bool) async -> Bool {
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
-        let used = await store.spend(forKey: todayKey(isAnonymous: isAnonymous))
-        return (used + estimatedCostUSD) <= cap
+        guard let amount = Self.micros(estimatedCostUSD), let cap = Self.micros(cap) else { return false }
+        return await store.spend(forKey: todayKey(isAnonymous: isAnonymous)) + amount <= cap
     }
 
     /// Atomically holds `estimatedCostUSD` against the caller's cap, or returns
@@ -64,28 +64,30 @@ public actor BudgetEnforcer {
     public func reserve(estimatedCostUSD: Double, isAnonymous: Bool) async -> Reservation? {
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
         let key = todayKey(isAnonymous: isAnonymous)
-        guard await store.reserve(estimatedCostUSD, capUSD: cap, forKey: key) else { return nil }
-        return Reservation(key: key, amountUSD: estimatedCostUSD)
+        guard let amount = Self.micros(estimatedCostUSD), let cap = Self.micros(cap),
+              await store.reserve(amount, cap: cap, forKey: key) else { return nil }
+        return Reservation(key: key, amount: amount)
     }
 
     public func release(_ reservation: Reservation) async {
-        await store.release(reservation.amountUSD, forKey: reservation.key)
+        await store.release(reservation.amount, forKey: reservation.key)
     }
 
     /// Record actual spend after a call completes. Call this with the real
     /// cost, not the estimate — estimates and actuals can diverge (token
     /// counts aren't always known until the response comes back).
     public func record(actualCostUSD: Double, isAnonymous: Bool) async {
-        await store.addSpend(actualCostUSD, forKey: todayKey(isAnonymous: isAnonymous))
+        guard let amount = Self.micros(actualCostUSD) else { return }
+        await store.addSpend(amount, forKey: todayKey(isAnonymous: isAnonymous))
     }
 
     public func dailyUsageUSD(isAnonymous: Bool) async -> Double {
-        await store.spend(forKey: todayKey(isAnonymous: isAnonymous))
+        Double(await store.spend(forKey: todayKey(isAnonymous: isAnonymous))) / Self.microsPerUSD
     }
 
     public func remainingBudgetUSD(isAnonymous: Bool) async -> Double {
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
-        return max(0, cap - (await store.spend(forKey: todayKey(isAnonymous: isAnonymous))))
+        return max(0, cap - (await dailyUsageUSD(isAnonymous: isAnonymous)))
     }
 
     // MARK: - Arbitrary per-scope envelopes
@@ -94,12 +96,22 @@ public actor BudgetEnforcer {
     /// carving out a smaller sub-budget for a specific feature or task type
     /// (e.g. "image analysis gets $0.50/day even within a user's larger cap").
     public func canSpend(estimatedCostUSD: Double, scope: String, capUSD: Double) async -> Bool {
-        let used = await store.spend(forKey: scopedKey(scope))
-        return (used + estimatedCostUSD) <= capUSD
+        guard let amount = Self.micros(estimatedCostUSD), let cap = Self.micros(capUSD) else { return false }
+        return await store.spend(forKey: scopedKey(scope)) + amount <= cap
     }
 
     public func record(actualCostUSD: Double, scope: String) async {
-        await store.addSpend(actualCostUSD, forKey: scopedKey(scope))
+        guard let amount = Self.micros(actualCostUSD) else { return }
+        await store.addSpend(amount, forKey: scopedKey(scope))
+    }
+
+    private static let microsPerUSD = 1_000_000.0
+
+    /// USD to whole micro-dollars, rounded to nearest. `nil` for NaN, infinity
+    /// or a value too large to represent, which `Int64(_:)` would trap on.
+    private static func micros(_ usd: Double) -> Int64? {
+        let scaled = (usd * microsPerUSD).rounded()
+        return scaled.isFinite && abs(scaled) < 9e18 ? Int64(scaled) : nil
     }
 
     private func todayKey(isAnonymous: Bool) -> String {

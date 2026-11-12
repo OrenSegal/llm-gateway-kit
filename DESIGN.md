@@ -40,6 +40,7 @@ release(amount, key): held[key] = max(0, held[key] - amount)
 record(actual, key):  spent[key] += actual        # real cost, reported by the provider adapter
 ```
 
+- Amounts in the store are whole micro-dollars (integers), so sums and the cap comparison are exact. The enforcer converts from and to USD.
 - A hold is not spend. It only blocks other callers while the call is in flight, and is released after the call whether it succeeded or threw. Real cost goes through `record`.
 - The key includes the UTC date and the caller class (identified or anonymous), so each has its own cap and the day rolls over at midnight UTC.
 - The hold is an estimate priced at the first tier. If the call escalates to a pricier tier or uses more tokens, actual spend can pass the cap by the difference. The README Limitations section says so.

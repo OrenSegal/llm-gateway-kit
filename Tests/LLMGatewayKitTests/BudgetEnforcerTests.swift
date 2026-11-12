@@ -63,6 +63,21 @@ struct BudgetEnforcerTests {
         }
     }
 
+    @Test("a $0.30 cap admits exactly three $0.10 calls")
+    func capBoundaryIsExact() async {
+        let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 0.30, anonymousDailyCapUSD: 0.30, store: InMemoryBudgetStore())
+        var admitted = 0
+        for _ in 0..<4 {
+            guard let hold = await enforcer.reserve(estimatedCostUSD: 0.10, isAnonymous: false) else { continue }
+            await enforcer.record(actualCostUSD: 0.10, isAnonymous: false)
+            await enforcer.release(hold)
+            admitted += 1
+        }
+        #expect(admitted == 3)
+        #expect(await enforcer.dailyUsageUSD(isAnonymous: false) == 0.30)
+        #expect(await enforcer.remainingBudgetUSD(isAnonymous: false) == 0)
+    }
+
     @Test("a reservation counts against the cap until released, and is not spend")
     func reservationHoldsUntilReleased() async throws {
         let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 1.0, anonymousDailyCapUSD: 0.5, store: InMemoryBudgetStore())

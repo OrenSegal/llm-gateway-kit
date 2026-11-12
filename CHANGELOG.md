@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/decisions.md`: five design decisions with the commit and tests behind each.
 - README: a request-flow diagram, and Limitations entries for the missing real provider adapter, the synthetic trace and the absence of production use.
 
+### Changed
+
+- **Breaking:** `BudgetStore` amounts are whole micro-dollars (`Int64`, 1 USD = 1,000,000) instead of `Double` dollars, and `reserve(_:capUSD:forKey:)` is now `reserve(_:cap:forKey:)`. Custom stores must be updated. `BudgetEnforcer`'s public API still takes and returns USD as `Double`; it rounds each amount to the nearest micro-dollar.
+- `UserDefaultsBudgetStore` stores an integer under the same key. Spend recorded by an earlier version on the day of the upgrade reads as its whole-dollar part.
+
+### Fixed
+
+- A cap that is an exact multiple of the call cost admits the last call. Before, `0.1 + 0.1 + 0.1 <= 0.3` was false in floating point and a $0.30 cap admitted two $0.10 calls.
+
 ## [0.2.0] - 2026-11-02
 
 ### Changed
