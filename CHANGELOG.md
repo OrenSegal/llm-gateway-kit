@@ -13,14 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/decisions.md`: five design decisions with the commit and tests behind each.
 - README: a request-flow diagram, and Limitations entries for the missing real provider adapter, the synthetic trace and the absence of production use.
 
-### Added
-
-- `UserDefaultsBudgetStore.shared`.
-
 ### Fixed
 
-- `BudgetEnforcer` uses `UserDefaultsBudgetStore.shared` when no store is passed. Before, each enforcer got its own store on the same `UserDefaults` keys, so two of them admitted twice the cap and concurrent `addSpend` calls lost updates.
-- `BudgetEnforcer.reserve` refuses a negative, NaN or infinite estimate, and `record` drops such a cost. Before, one NaN cost refused every call until the next UTC day, and a negative cost lowered recorded spend.
+- `LLMGateway` reserves each call's estimate at the most expensive tier's price instead of the first tier's. Before, concurrent calls that failed over to a pricier tier could together spend several times the daily cap.
 
 ## [0.2.0] - 2026-11-02
 
@@ -57,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SemanticCache.lookup` and `VisionCache.lookup` now treat entries older than `ttl` as misses. Before, expired entries were served until `evictExpired()` ran, which contradicted the `ttl` doc comments.
 
-## [0.1.0] - 2026-08-01
+## [0.1.0] - 2026-09-28
 
 ### Added
 
