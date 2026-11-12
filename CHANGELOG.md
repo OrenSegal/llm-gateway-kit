@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/decisions.md`: five design decisions with the commit and tests behind each.
 - README: a request-flow diagram, and Limitations entries for the missing real provider adapter, the synthetic trace and the absence of production use.
 
+### Added
+
+- `UserDefaultsBudgetStore.shared`.
+
+### Fixed
+
+- `BudgetEnforcer` uses `UserDefaultsBudgetStore.shared` when no store is passed. Before, each enforcer got its own store on the same `UserDefaults` keys, so two of them admitted twice the cap and concurrent `addSpend` calls lost updates.
+- `BudgetEnforcer.reserve` refuses a negative, NaN or infinite estimate, and `record` drops such a cost. Before, one NaN cost refused every call until the next UTC day, and a negative cost lowered recorded spend.
+
 ## [0.2.0] - 2026-11-02
 
 ### Changed
