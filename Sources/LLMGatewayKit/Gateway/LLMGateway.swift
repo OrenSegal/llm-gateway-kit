@@ -1,8 +1,9 @@
 import Foundation
 
-/// The orchestrator that ties the three pillars together: gate chain →
-/// cache lookup → budget-checked, circuit-broken tiered provider cascade →
-/// cache store → cost recording. This is the type most apps only ever need
+/// The orchestrator that ties the three pillars together: cache lookup →
+/// gate chain → budget-checked, circuit-broken tiered provider cascade →
+/// cost recording → cache store. The gate chain runs only on a cache miss,
+/// so a denying gate does not stop a cached answer. This is the type most apps only ever need
 /// to touch directly.
 ///
 /// Request flow for `complete(_:isAnonymous:)`:

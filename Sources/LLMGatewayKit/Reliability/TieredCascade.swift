@@ -25,11 +25,9 @@ public struct CascadeTier: Sendable {
 /// primary model with a stronger/pricier backup — escalating to the next
 /// tier on failure, an open circuit breaker, or (optionally) low confidence.
 ///
-/// This is the pattern used in the app this was extracted from to run a lower-cost vision model
-/// as primary with a higher-quality model as fallback: most calls resolve on
-/// the cheap tier, and only the ones that actually need it escalate, so
-/// average cost per call stays close to the cheap tier's price while
-/// reliability and quality track the expensive tier's ceiling.
+/// The usual shape is a lower-cost model as primary with a higher-quality
+/// model as fallback. How many calls escalate depends on your traffic and is
+/// not measured in this package.
 public struct TieredCascade: Sendable {
     public let tiers: [CascadeTier]
 
@@ -41,8 +39,10 @@ public struct TieredCascade: Sendable {
 
     /// Attempts each tier in order. Returns the first response that either
     /// has no confidence signal or clears its tier's confidence floor.
-    /// Throws `LLMGatewayError.allProvidersFailed` only if every tier either
-    /// had an open breaker or threw, or returned below its floor.
+    /// If no tier returns an acceptable response, throws the last error seen:
+    /// the provider's own error, or `LLMGatewayError.circuitOpen` for a tier
+    /// that was skipped. Throws `LLMGatewayError.allProvidersFailed` only when
+    /// no tier threw or was skipped, i.e. every tier answered below its floor.
     ///
     /// - Parameter onSpend: Called with the cost of each provider call that
     ///   returned a response, priced by the provider that made it, including

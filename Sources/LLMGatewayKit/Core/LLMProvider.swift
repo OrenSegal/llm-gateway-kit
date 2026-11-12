@@ -1,9 +1,8 @@
 import Foundation
 
-/// Token usage for a single LLM call. Providers report whatever they have;
-/// unknown fields default to zero rather than throwing, so a partial usage
-/// payload from a provider still lets the gateway keep a conservative cost
-/// estimate instead of losing accounting entirely.
+/// Token usage for a single LLM call. Providers report whatever they have.
+/// A field left at zero is priced as zero, so a partial usage payload
+/// under-counts the call's cost; fill in every field your vendor reports.
 public struct LLMUsage: Sendable, Equatable {
     public let inputTokens: Int
     public let outputTokens: Int
@@ -55,7 +54,7 @@ public struct LLMResponse: Sendable, Equatable {
     }
 }
 
-/// The seam a buyer implements once per LLM vendor (OpenAI, Anthropic,
+/// The seam you implement once per LLM vendor (OpenAI, Anthropic,
 /// Gemini, a self-hosted model, whatever). LLMGatewayKit never talks to a
 /// vendor API directly — it only ever calls through this protocol, so the
 /// caching/circuit-breaker/budget layers are provider-agnostic.

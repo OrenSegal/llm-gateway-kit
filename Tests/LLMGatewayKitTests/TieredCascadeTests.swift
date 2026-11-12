@@ -97,4 +97,15 @@ struct TieredCascadeTests {
             #expect(error is URLError || (error as? LLMGatewayError) == .allProvidersFailed)
         }
     }
+
+    @Test("a skipped tier surfaces as circuitOpen, not allProvidersFailed")
+    func openBreakerThrowsCircuitOpen() async {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: 60)
+        await breaker.recordFailure()
+        let only = StubProvider(identifier: "only", result: .failure(URLError(.badServerResponse)))
+        let cascade = TieredCascade(tiers: [CascadeTier(provider: only, breaker: breaker)])
+        await #expect(throws: LLMGatewayError.circuitOpen(provider: "only")) {
+            _ = try await cascade.send(LLMRequest(prompt: "hi"))
+        }
+    }
 }
