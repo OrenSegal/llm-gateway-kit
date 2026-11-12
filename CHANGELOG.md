@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/decisions.md`: five design decisions with the commit and tests behind each.
 - README: a request-flow diagram, and Limitations entries for the missing real provider adapter, the synthetic trace and the absence of production use.
 
+### Fixed
+
+- `VisionCache` treats an empty hash as a miss and does not store it. Before, a hasher that returned `""` for two different images made the second one receive the first one's cached answer.
+
 ## [0.2.0] - 2026-11-02
 
 ### Changed
