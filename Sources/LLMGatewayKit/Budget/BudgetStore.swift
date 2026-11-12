@@ -28,6 +28,11 @@ public protocol BudgetStore: Sendable {
 /// `await` boundary). Holds stay in memory, so a process killed mid-call
 /// doesn't leave its estimate counted against the cap.
 public actor UserDefaultsBudgetStore: BudgetStore {
+    /// The store `BudgetEnforcer` uses by default. Holds live in the actor and
+    /// `addSpend` is a read-modify-write, so two stores on the same
+    /// `UserDefaults` domain admit twice the cap and lose updates; share this one.
+    public static let shared = UserDefaultsBudgetStore()
+
     private let defaults: UserDefaults
     private var holds: [String: Int64] = [:]
 

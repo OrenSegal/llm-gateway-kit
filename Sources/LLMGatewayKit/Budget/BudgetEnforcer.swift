@@ -33,13 +33,15 @@ public actor BudgetEnforcer {
     ///   - anonymousDailyCapUSD: Daily cap for anonymous callers. Typically much
     ///     smaller — this is what stops a single anonymous session from running
     ///     up unbounded spend before any auth/paywall gate would catch it.
-    ///   - store: Where spend totals are persisted. Defaults to `UserDefaults`.
+    ///   - store: Where spend totals are persisted. Defaults to one shared
+    ///     `UserDefaults`-backed store, so enforcers created with the default
+    ///     see each other's holds and spend.
     ///   - keyPrefix: Namespace for stored keys, in case the host app uses
     ///     `UserDefaults` for other things too.
     public init(
         identifiedDailyCapUSD: Double,
         anonymousDailyCapUSD: Double,
-        store: BudgetStore = UserDefaultsBudgetStore(),
+        store: BudgetStore = UserDefaultsBudgetStore.shared,
         keyPrefix: String = "llmgatewaykit.budget."
     ) {
         self.identifiedDailyCapUSD = identifiedDailyCapUSD
@@ -58,10 +60,11 @@ public actor BudgetEnforcer {
     }
 
     /// Atomically holds `estimatedCostUSD` against the caller's cap, or returns
-    /// `nil` if that would cross it. Call this BEFORE making the LLM request,
+    /// `nil` if that would cross it or the estimate is negative, NaN or infinite. Call this BEFORE making the LLM request,
     /// `record` what the request really cost, then `release` the hold, on
     /// failure too.
     public func reserve(estimatedCostUSD: Double, isAnonymous: Bool) async -> Reservation? {
+        guard Self.isValid(estimatedCostUSD) else { return nil }
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
         let key = todayKey(isAnonymous: isAnonymous)
         guard let amount = Self.micros(estimatedCostUSD), let cap = Self.micros(cap),
@@ -75,10 +78,12 @@ public actor BudgetEnforcer {
 
     /// Record actual spend after a call completes. Call this with the real
     /// cost, not the estimate — estimates and actuals can diverge (token
-    /// counts aren't always known until the response comes back).
+    /// counts aren't always known until the response comes back). A cost that
+    /// is negative, NaN or infinite is dropped: added to the total it would
+    /// either lower recorded spend or make every later check fail.
     public func record(actualCostUSD: Double, isAnonymous: Bool) async {
-        guard let amount = Self.micros(actualCostUSD) else { return }
-        await store.addSpend(amount, forKey: todayKey(isAnonymous: isAnonymous))
+        guard Self.isValid(actualCostUSD) else { return }
+        await store.addSpend(actualCostUSD, forKey: todayKey(isAnonymous: isAnonymous))
     }
 
     public func dailyUsageUSD(isAnonymous: Bool) async -> Double {
@@ -101,17 +106,12 @@ public actor BudgetEnforcer {
     }
 
     public func record(actualCostUSD: Double, scope: String) async {
-        guard let amount = Self.micros(actualCostUSD) else { return }
-        await store.addSpend(amount, forKey: scopedKey(scope))
+        guard Self.isValid(actualCostUSD) else { return }
+        await store.addSpend(actualCostUSD, forKey: scopedKey(scope))
     }
 
-    private static let microsPerUSD = 1_000_000.0
-
-    /// USD to whole micro-dollars, rounded to nearest. `nil` for NaN, infinity
-    /// or a value too large to represent, which `Int64(_:)` would trap on.
-    private static func micros(_ usd: Double) -> Int64? {
-        let scaled = (usd * microsPerUSD).rounded()
-        return scaled.isFinite && abs(scaled) < 9e18 ? Int64(scaled) : nil
+    private static func isValid(_ amountUSD: Double) -> Bool {
+        amountUSD.isFinite && amountUSD >= 0
     }
 
     private func todayKey(isAnonymous: Bool) -> String {

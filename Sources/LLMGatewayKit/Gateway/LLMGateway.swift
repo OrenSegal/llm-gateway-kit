@@ -1,8 +1,9 @@
 import Foundation
 
-/// The orchestrator that ties the three pillars together: gate chain →
-/// cache lookup → budget-checked, circuit-broken tiered provider cascade →
-/// cache store → cost recording. This is the type most apps only ever need
+/// The orchestrator that ties the three pillars together: cache lookup →
+/// gate chain → budget-checked, circuit-broken tiered provider cascade →
+/// cost recording → cache store. The gate chain runs only on a cache miss,
+/// so a denying gate does not stop a cached answer. This is the type most apps only ever need
 /// to touch directly.
 ///
 /// Request flow for `complete(_:isAnonymous:)`:
@@ -50,18 +51,16 @@ public final class LLMGateway: @unchecked Sendable {
         }
 
         let scope = cacheScope(for: request)
-        if let semanticCache, let cached = await semanticCache.lookup(prompt: request.prompt, scope: scope) {
+        let lookup = await semanticCache?.lookupKeepingEmbedding(prompt: request.prompt, scope: scope)
+        if let cached = lookup?.response {
             await auditLogger.log(source: .semanticCache, costUSD: 0)
             return LLMResponse(text: cached, usage: LLMUsage(inputTokens: 0, outputTokens: 0), modelID: "cache")
         }
 
-        let estimatedCost = cascade.tiers.first?.provider.estimatedCostUSD(
-            inputTokens: request.prompt.count / 4,
-            outputTokens: request.maxOutputTokens ?? 256
-        ) ?? 0
+        let estimatedCost = estimate(inputTokens: request.prompt.count / 4, outputTokens: request.maxOutputTokens ?? 256)
         let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
-        if let semanticCache {
-            await semanticCache.store(prompt: request.prompt, response: response.text, scope: scope)
+        if let semanticCache, let lookup {
+            await semanticCache.store(prompt: request.prompt, response: response.text, scope: scope, embedding: lookup.embedding)
         }
         return response
     }
@@ -79,10 +78,7 @@ public final class LLMGateway: @unchecked Sendable {
             return LLMResponse(text: cached, usage: LLMUsage(inputTokens: 0, outputTokens: 0), modelID: "cache")
         }
 
-        let estimatedCost = cascade.tiers.first?.provider.estimatedCostUSD(
-            inputTokens: 1_300,
-            outputTokens: request.maxOutputTokens ?? 400
-        ) ?? 0
+        let estimatedCost = estimate(inputTokens: 1_300, outputTokens: request.maxOutputTokens ?? 400)
         let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
         if let visionCache {
             await visionCache.store(image: image, prompt: request.prompt, response: response.text, taskType: scope)
@@ -113,6 +109,13 @@ public final class LLMGateway: @unchecked Sendable {
             await budget.release(reservation)
             throw error
         }
+    }
+
+    /// Priced at the most expensive tier, because a failure or an open breaker
+    /// on a cheaper tier sends the call there. Pricing the hold at the first
+    /// tier let a burst during failover spend several times the cap.
+    private func estimate(inputTokens: Int, outputTokens: Int) -> Double {
+        cascade.tiers.map { $0.provider.estimatedCostUSD(inputTokens: inputTokens, outputTokens: outputTokens) }.max() ?? 0
     }
 
     /// Everything besides the prompt and image that changes the answer. The
