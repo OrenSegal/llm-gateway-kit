@@ -4,7 +4,7 @@
 
 A Swift package that sits between an app and its LLM providers and handles cost and reliability. Its patterns come from the LLM gateway in Shelfie, my kitchen-inventory iOS app (pre-launch). Shelfie runs its own server-side gateway and does not use this package.
 
-- **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no paid call.
+- **Caching.** `SemanticCache` answers a reworded prompt from an earlier response when the embeddings are close enough; `VisionCache` does the same for images by perceptual hash. A hit makes no provider call. A text hit still costs one call to your `EmbeddingProvider`, which the kit does not count against the budget.
 - **Circuit breaker.** Each provider gets a breaker that opens after 5 straight failures (configurable), and `TieredCascade` sends traffic to the next provider instead of retrying a dead one.
 - **Spend limits.** `BudgetEnforcer` reserves each call's estimated cost against a daily USD cap before the call goes out, with separate caps for signed-in and anonymous callers, and refuses the call if that would cross the cap.
 
@@ -209,6 +209,7 @@ force Xcode's toolchain instead.
 - **Scoped envelopes don't reserve.** `canSpend(estimatedCostUSD:scope:capUSD:)` is check-then-record, so calls that start together can all pass it and overshoot a scoped cap by the cost of the calls in flight.
 - **A provider call that throws records nothing.** There is no usage to price, so if a vendor bills for a failed call, that cost isn't counted. Recorded cost is whatever your provider's `estimatedCostUSD` computes from the usage it reports.
 - **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries are never served but still take memory until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.
+- **Embedding calls are not budgeted, and identical concurrent requests are not coalesced.** Every text request embeds its prompt once, hit or miss; if your embedding model is a paid API, that cost is outside the daily cap. Requests for the same prompt that start together all miss and are all sent to a provider; only later ones hit.
 - **Cache keys have limits.** `LLMGateway` separates cached answers by task type, `maxOutputTokens` and the list of tiers in the cascade. It doesn't know which tier answered, so an answer from a backup tier is reused for that whole cascade. The vision cache compares prompts as exact text, so a reworded question about the same image is a paid call. If you call `SemanticCache` directly, pass your own `scope`. The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
 - **A `recoveryInterval` of 0 removes the probe limit.** The half-open timeout equals `recoveryInterval`, so at 0 every caller counts as replacing a timed-out probe.
 

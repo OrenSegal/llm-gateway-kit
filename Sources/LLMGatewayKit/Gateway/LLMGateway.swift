@@ -51,15 +51,16 @@ public final class LLMGateway: @unchecked Sendable {
         }
 
         let scope = cacheScope(for: request)
-        if let semanticCache, let cached = await semanticCache.lookup(prompt: request.prompt, scope: scope) {
+        let lookup = await semanticCache?.lookupKeepingEmbedding(prompt: request.prompt, scope: scope)
+        if let cached = lookup?.response {
             await auditLogger.log(source: .semanticCache, costUSD: 0)
             return LLMResponse(text: cached, usage: LLMUsage(inputTokens: 0, outputTokens: 0), modelID: "cache")
         }
 
         let estimatedCost = estimate(inputTokens: request.prompt.count / 4, outputTokens: request.maxOutputTokens ?? 256)
         let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
-        if let semanticCache {
-            await semanticCache.store(prompt: request.prompt, response: response.text, scope: scope)
+        if let semanticCache, let lookup {
+            await semanticCache.store(prompt: request.prompt, response: response.text, scope: scope, embedding: lookup.embedding)
         }
         return response
     }
