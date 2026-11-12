@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `LLMGateway` embeds a prompt once per cache miss. Before, the lookup and the store each called the `EmbeddingProvider`.
+- `LLMGateway` reserves each call's estimate at the most expensive tier's price instead of the first tier's. Before, concurrent calls that failed over to a pricier tier could together spend several times the daily cap.
 
 ## [0.2.0] - 2026-11-02
 
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SemanticCache.lookup` and `VisionCache.lookup` now treat entries older than `ttl` as misses. Before, expired entries were served until `evictExpired()` ran, which contradicted the `ttl` doc comments.
 
-## [0.1.0] - 2026-08-01
+## [0.1.0] - 2026-09-28
 
 ### Added
 

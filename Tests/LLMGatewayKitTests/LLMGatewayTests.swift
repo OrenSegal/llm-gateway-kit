@@ -217,6 +217,26 @@ struct LLMGatewayTests {
         #expect(abs(await budget.dailyUsageUSD(isAnonymous: false) - 0.01) < 1e-9)
     }
 
+    @Test("a burst during failover cannot pass the cap")
+    func failoverBurstRespectsCap() async {
+        let backupCalls = Counter()
+        let cascade = TieredCascade(tiers: [
+            CascadeTier(provider: PricedProvider(identifier: "cheap", priceUSD: 0.01, fails: true)),
+            CascadeTier(provider: PricedProvider(identifier: "backup", priceUSD: 0.05, counter: backupCalls)),
+        ])
+        let budget = BudgetEnforcer(identifiedDailyCapUSD: 0.055, anonymousDailyCapUSD: 0.055, store: InMemoryBudgetStore())
+        let gateway = LLMGateway(cascade: cascade, budget: budget)
+
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<20 {
+                group.addTask { _ = try? await gateway.complete(LLMRequest(prompt: "p\(i)")) }
+            }
+        }
+
+        #expect(await backupCalls.value == 1)
+        #expect(await budget.dailyUsageUSD(isAnonymous: false) <= 0.055)
+    }
+
     @Test("a failed call gives its reservation back")
     func failedCallReleasesReservation() async throws {
         let budget = BudgetEnforcer(identifiedDailyCapUSD: 0.01, anonymousDailyCapUSD: 0.01, store: InMemoryBudgetStore())
