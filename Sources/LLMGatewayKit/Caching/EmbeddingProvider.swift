@@ -1,6 +1,6 @@
 import Foundation
 
-/// The seam a buyer implements to plug in whatever embedding model they use
+/// The seam you implement to plug in whatever embedding model you use
 /// (OpenAI `text-embedding-3-small`, Gemini `gemini-embedding-001`, a local
 /// model, etc). `SemanticCache` never calls a vendor embeddings API directly.
 public protocol EmbeddingProvider: Sendable {
