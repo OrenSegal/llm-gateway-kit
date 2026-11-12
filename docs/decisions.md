@@ -22,9 +22,12 @@ else was weighed: the alternatives below were written on 2026-11-07, and
   request, so one slow call blocks all others. Post-hoc reconciliation
   (record, then refuse the next call): still lets a burst through. Neither is
   recorded as weighed at the time.
-- **Consequences.** A burst cannot pass the cap together. The hold is an
-  estimate priced at the first tier, so an escalated or longer call can
-  still overshoot by the estimate's error (README, Limitations). Atomicity
+- **Consequences.** A burst cannot pass the cap together as long as each call
+  costs no more than its hold. The hold is an estimate priced at the most
+  expensive tier (until 0.2.0 it was the first tier, and a burst during
+  failover could spend several times the cap). A call that pays two tiers
+  after a low-confidence answer, or uses more tokens than estimated, can
+  still overshoot by the difference (README, Limitations). Atomicity
   holds only inside one store; a server-backed `BudgetStore` must make
   `reserve` a transaction.
 - **Evidence.** 971be2f (PR #5, released in 0.2.0). Tests:
