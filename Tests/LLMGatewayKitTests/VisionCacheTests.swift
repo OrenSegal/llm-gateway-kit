@@ -22,6 +22,27 @@ struct VisionCacheTests {
         #expect(await cache.lookup(image: alsoFailed, prompt: "q", taskType: "scan") == nil)
     }
 
+    @Test("the closest stored image answers, not the first one within tolerance")
+    func closestMatchWins() async {
+        let near = Data([1])
+        let exact = Data([2])
+        // "ffffffffffffff00" is 8 bits from "ffffffffffffffff": inside the default tolerance of 10.
+        let hasher = FakeHasher(hashes: [near: "ffffffffffffff00", exact: "ffffffffffffffff"])
+        let cache = VisionCache(hasher: hasher)
+        await cache.store(image: near, prompt: "q", response: "a similar-looking jar", taskType: "scan")
+        await cache.store(image: exact, prompt: "q", response: "this exact jar", taskType: "scan")
+        #expect(await cache.lookup(image: exact, prompt: "q", taskType: "scan") == "this exact jar")
+    }
+
+    @Test("of two answers stored for the same image, the newer one is served")
+    func newerAnswerWins() async {
+        let image = Data([1])
+        let cache = VisionCache(hasher: FakeHasher(hashes: [image: "ffffffffffffffff"]))
+        await cache.store(image: image, prompt: "q", response: "old answer", taskType: "scan")
+        await cache.store(image: image, prompt: "q", response: "new answer", taskType: "scan")
+        #expect(await cache.lookup(image: image, prompt: "q", taskType: "scan") == "new answer")
+    }
+
     @Test("hits on an identical hash")
     func exactHit() async {
         let imageA = Data([1, 2, 3])

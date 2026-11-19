@@ -61,14 +61,20 @@ public actor VisionCache {
         guard !queryHash.isEmpty else { return nil }
         let cutoff = Date().addingTimeInterval(-ttl)
         // Expired entries are misses even before evictExpired() sweeps them.
-        guard let index = cache.firstIndex(where: {
-            $0.storedAt > cutoff && $0.prompt == prompt && $0.taskType == taskType
-                && Self.hammingDistance($0.hash, queryHash) <= maxHammingDistance
-        }) else {
-            return nil
+        // The closest entry answers, and of equally close ones the newest:
+        // the first one within tolerance can be a different picture when an
+        // exact match was stored after it.
+        var best: (index: Int, distance: Int)?
+        for (index, entry) in cache.enumerated() {
+            guard entry.storedAt > cutoff, entry.prompt == prompt, entry.taskType == taskType else { continue }
+            let distance = Self.hammingDistance(entry.hash, queryHash)
+            if distance <= maxHammingDistance, best == nil || distance <= best!.distance {
+                best = (index, distance)
+            }
         }
-        cache[index].hitCount += 1
-        return cache[index].response
+        guard let best else { return nil }
+        cache[best.index].hitCount += 1
+        return cache[best.index].response
     }
 
     public func store(image: Data, prompt: String, response: String, taskType: String) async {
