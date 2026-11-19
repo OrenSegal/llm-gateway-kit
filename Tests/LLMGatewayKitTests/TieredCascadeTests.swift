@@ -13,8 +13,50 @@ private struct StubProvider: LLMProvider {
     }
 }
 
+private actor CallCount {
+    private(set) var value = 0
+    func increment() { value += 1 }
+}
+
+private struct SlowProvider: LLMProvider {
+    let identifier = "slow"
+    func estimatedCostUSD(inputTokens: Int, outputTokens: Int) -> Double { 0.001 }
+    func send(_ request: LLMRequest) async throws -> LLMResponse {
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        return LLMResponse(text: "late", usage: LLMUsage(inputTokens: 1, outputTokens: 1), modelID: identifier)
+    }
+}
+
+private struct CountedProvider: LLMProvider {
+    let identifier = "backup"
+    let calls: CallCount
+    func estimatedCostUSD(inputTokens: Int, outputTokens: Int) -> Double { 0.001 }
+    func send(_ request: LLMRequest) async throws -> LLMResponse {
+        await calls.increment()
+        return LLMResponse(text: "paid", usage: LLMUsage(inputTokens: 1, outputTokens: 1), modelID: identifier)
+    }
+}
+
 @Suite("TieredCascade")
 struct TieredCascadeTests {
+    @Test("a cancelled call is not a provider failure and does not try the next tier")
+    func cancellationIsNotFailure() async throws {
+        let breaker = CircuitBreaker(failureThreshold: 1, recoveryInterval: 60)
+        let backupCalls = CallCount()
+        let cascade = TieredCascade(tiers: [
+            CascadeTier(provider: SlowProvider(), breaker: breaker),
+            CascadeTier(provider: CountedProvider(calls: backupCalls)),
+        ])
+
+        let call = Task { try await cascade.send(LLMRequest(prompt: "hi")) }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        call.cancel()
+
+        await #expect(throws: CancellationError.self) { _ = try await call.value }
+        #expect(await breaker.state == .closed)
+        #expect(await backupCalls.value == 0)
+    }
+
     @Test("returns the primary tier's response when it succeeds and is confident")
     func primarySucceeds() async throws {
         let primary = StubProvider(

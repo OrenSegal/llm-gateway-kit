@@ -44,6 +44,9 @@ public struct TieredCascade: Sendable {
     /// Throws `LLMGatewayError.allProvidersFailed` only if every tier either
     /// had an open breaker or threw, or returned below its floor.
     ///
+    /// If the calling task is cancelled, the provider's error is rethrown as
+    /// is: no breaker failure is recorded and no further tier is tried.
+    ///
     /// - Parameter onSpend: Called with the cost of each provider call that
     ///   returned a response, priced by the provider that made it, including
     ///   low-confidence responses the cascade then discards. A call that threw
@@ -70,6 +73,9 @@ public struct TieredCascade: Sendable {
                 }
                 return response
             } catch {
+                // The caller gave up; the provider didn't fail. Don't count it
+                // against the breaker and don't buy the next tier.
+                if Task.isCancelled || error is CancellationError { throw error }
                 await tier.breaker.recordFailure()
                 lastError = error
             }
