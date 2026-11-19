@@ -35,11 +35,11 @@ public actor SemanticCache {
     private var cache: [CacheKey: CacheEntry] = [:]
 
     /// - Parameters:
-    ///   - embeddingProvider: Buyer-supplied embedding backend.
+    ///   - embeddingProvider: The embedding backend you supply.
     ///   - ttl: How long a stored response stays eligible for a hit. Defaults to 24h.
     ///   - similarityThreshold: Cosine similarity required for a hit. Default 0.92
-    ///     is tuned to allow paraphrase hits while blocking unrelated prompts;
-    ///     raise it toward 0.97+ for tasks where a near-miss is unacceptable
+    ///     is a starting point with no tuning data behind it; measure it on
+    ///     your own traffic, and raise it toward 0.97+ for tasks where a near-miss is unacceptable
     ///     (e.g. anything touching a monetary amount or a safety claim).
     public init(
         embeddingProvider: EmbeddingProvider,

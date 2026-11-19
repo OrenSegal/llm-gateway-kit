@@ -1,6 +1,6 @@
 import Foundation
 
-/// The seam a buyer implements to produce a perceptual hash for an image.
+/// The seam you implement to produce a perceptual hash for an image.
 /// Any perceptual-hash algorithm works (aHash/dHash/pHash) as long as it
 /// returns a fixed-length hex string where Hamming distance between two
 /// hashes approximates visual similarity. A cryptographic hash (SHA256, MD5)
@@ -12,9 +12,8 @@ public protocol PerceptualHasher: Sendable {
 
 /// Perceptual-hash response cache for vision/image LLM calls.
 ///
-/// Most "AI starter kit" caching only covers text chat. Vision calls
-/// (photo analysis, OCR, object detection) are a distinct and often
-/// larger cost center, and a text-embedding cache cannot help there —
+/// Vision calls (photo analysis, OCR, object detection) are a separate
+/// cost center, and a text-embedding cache cannot help there —
 /// there is no text prompt to embed. `VisionCache` keys instead on a
 /// perceptual hash of the image, so two photos of the same physical scene
 /// (retaken, re-cropped, recompressed) can still hit the cache even though
@@ -38,11 +37,11 @@ public actor VisionCache {
     private var cache: [CacheEntry] = []
 
     /// - Parameters:
-    ///   - hasher: Buyer-supplied perceptual hash implementation.
+    ///   - hasher: The perceptual hash implementation you supply.
     ///   - ttl: How long a stored response stays eligible for a hit. Defaults to 24h.
     ///   - maxHammingDistance: Maximum bit difference between hashes to count as
-    ///     a match. Default 10 mirrors the threshold used in the app this was extracted from for
-    ///     64-bit perceptual hashes — tune tighter for hash algorithms with
+    ///     a match. Default 10 is a starting point for 64-bit perceptual hashes
+    ///     with no tuning data behind it — tune tighter for hash algorithms with
     ///     more bits, or for tasks where a near-miss is unacceptable.
     public init(
         hasher: PerceptualHasher,

@@ -10,8 +10,8 @@ import LLMGatewayKit
 // unchanged.
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Toy provider: buyers replace this with a real adapter (a struct/actor
-/// that calls their vendor's SDK/REST API and maps the response onto
+/// Toy provider: replace this with a real adapter (a struct/actor
+/// that calls your vendor's SDK/REST API and maps the response onto
 /// `LLMResponse`). Everything else in the package only ever talks to the
 /// `LLMProvider` protocol, never to this type.
 struct MockLLMProvider: LLMProvider {
