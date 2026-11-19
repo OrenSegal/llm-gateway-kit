@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `LLMGateway` reserves each call's estimate at the most expensive tier's price instead of the first tier's. Before, concurrent calls that failed over to a pricier tier could together spend several times the daily cap.
 - `VisionCache.lookup` serves the closest stored image, and the newest of equally close ones. Before, it served the first entry within the Hamming tolerance, which could be a different picture stored before an exact match.
+- Budget keys write the day as the Gregorian UTC date in ASCII digits on every device. Before, the day followed the device's calendar and digits, so changing the region mid-day started a fresh cap. A device on a non-Gregorian calendar starts one new key on upgrade.
 - A cap that is an exact multiple of the call cost admits every call that fits. Totals are compared with the cap in whole micro-dollars; before, summed `Double` dollars drifted past it, so a $0.30 cap refused the third $0.10 call.
 
 ## [0.2.0] - 2026-11-02

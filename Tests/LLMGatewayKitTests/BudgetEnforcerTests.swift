@@ -2,6 +2,15 @@ import Foundation
 import Testing
 @testable import LLMGatewayKit
 
+/// Records the keys it is asked about, to pin the key format.
+private actor KeyRecordingStore: BudgetStore {
+    private(set) var keys: [String] = []
+    func spend(forKey key: String) async -> Double { keys.append(key); return 0 }
+    func addSpend(_ amount: Double, forKey key: String) async { keys.append(key) }
+    func reserve(_ amount: Double, capUSD: Double, forKey key: String) async -> Bool { keys.append(key); return true }
+    func release(_ amount: Double, forKey key: String) async { keys.append(key) }
+}
+
 @Suite("BudgetEnforcer")
 struct BudgetEnforcerTests {
     @Test("allows spend within the identified cap")
@@ -91,6 +100,32 @@ struct BudgetEnforcerTests {
             #expect(await enforcer.canSpend(estimatedCostUSD: 0.10, scope: "vision", capUSD: 0.30))
             #expect(await enforcer.canSpend(estimatedCostUSD: 0.11, scope: "vision", capUSD: 0.30) == false)
         }
+    }
+
+    @Test("the day in a budget key is the Gregorian UTC date in ASCII digits, whatever the device locale")
+    func dayKeyIgnoresLocale() async {
+        // Pins the stored key format. A DateFormatter left on the device locale
+        // writes the Buddhist year in th_TH and Arabic-Indic digits in ar_SA;
+        // this only goes red for that on a machine set to such a region.
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = TimeZone(secondsFromGMT: 0)!
+        let before = gregorian.dateComponents([.year, .month, .day], from: Date())
+        let store = KeyRecordingStore()
+        let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 1, anonymousDailyCapUSD: 1, store: store, keyPrefix: "p.")
+        await enforcer.record(actualCostUSD: 0.01, isAnonymous: false)
+        await enforcer.record(actualCostUSD: 0.01, scope: "vision")
+        let after = gregorian.dateComponents([.year, .month, .day], from: Date())
+
+        // Either side of midnight UTC is acceptable if the test straddles it.
+        func pad(_ value: Int?) -> String {
+            let digits = String(value ?? 0)
+            return digits.count < 2 ? "0" + digits : digits
+        }
+        let days: [String] = [before, after].map { "\(pad($0.year))-\(pad($0.month))-\(pad($0.day))" }
+        let keys = await store.keys
+        #expect(keys.count == 2)
+        #expect(days.map { "p.user." + $0 }.contains(keys.first ?? ""))
+        #expect(days.map { "p.scope.vision." + $0 }.contains(keys.last ?? ""))
     }
 
     @Test("enforcers created with the default store share one set of holds")

@@ -123,6 +123,10 @@ public actor BudgetEnforcer {
 
     private static func dateString() -> String {
         let formatter = DateFormatter()
+        // Without a fixed locale the day is written in the device's calendar
+        // and digits (Buddhist year in th_TH, Arabic-Indic digits in ar_SA),
+        // so changing the region mid-day would start a new key and a fresh cap.
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.string(from: Date())
