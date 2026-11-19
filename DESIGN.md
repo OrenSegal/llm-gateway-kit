@@ -12,7 +12,7 @@ complete(request, anonymous):
     hit = semantic_cache.lookup(request.prompt, scope = cache_scope(request))
     if hit: log(source = cache, cost = 0); return hit
 
-    estimate = first_tier.price(len(prompt) / 4 input tokens, max_output or 256)
+    estimate = max over tiers of tier.price(len(prompt) / 4 input tokens, max_output or 256)
     if any gate denies (estimate): raise gate_denied
     hold = budget.reserve(estimate, anonymous)     # atomic, see below
     if hold is none: raise gate_denied("dailyBudgetExceeded")
@@ -42,7 +42,7 @@ record(actual, key):  spent[key] += actual        # real cost, reported by the p
 
 - A hold is not spend. It only blocks other callers while the call is in flight, and is released after the call whether it succeeded or threw. Real cost goes through `record`.
 - The key includes the UTC date and the caller class (identified or anonymous), so each has its own cap and the day rolls over at midnight UTC.
-- The hold is an estimate priced at the first tier. If the call escalates to a pricier tier or uses more tokens, actual spend can pass the cap by the difference. The README Limitations section says so.
+- The hold is an estimate priced at the most expensive tier, so failing over stays inside it. If the call pays two tiers (a low-confidence answer, then an escalation) or uses more tokens, actual spend can pass the cap by the difference. The README Limitations section says so.
 - Atomicity holds only within one store instance. A server-backed `BudgetStore` has to implement `reserve` as a transaction itself.
 
 Code: `Budget/BudgetStore.swift` (the atomic check), `Budget/BudgetEnforcer.swift` (caps, keys).

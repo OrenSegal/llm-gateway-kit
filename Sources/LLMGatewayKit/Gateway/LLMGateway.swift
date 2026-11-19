@@ -55,10 +55,7 @@ public final class LLMGateway: @unchecked Sendable {
             return LLMResponse(text: cached, usage: LLMUsage(inputTokens: 0, outputTokens: 0), modelID: "cache")
         }
 
-        let estimatedCost = cascade.tiers.first?.provider.estimatedCostUSD(
-            inputTokens: request.prompt.count / 4,
-            outputTokens: request.maxOutputTokens ?? 256
-        ) ?? 0
+        let estimatedCost = estimate(inputTokens: request.prompt.count / 4, outputTokens: request.maxOutputTokens ?? 256)
         let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
         if let semanticCache {
             await semanticCache.store(prompt: request.prompt, response: response.text, scope: scope)
@@ -79,10 +76,7 @@ public final class LLMGateway: @unchecked Sendable {
             return LLMResponse(text: cached, usage: LLMUsage(inputTokens: 0, outputTokens: 0), modelID: "cache")
         }
 
-        let estimatedCost = cascade.tiers.first?.provider.estimatedCostUSD(
-            inputTokens: 1_300,
-            outputTokens: request.maxOutputTokens ?? 400
-        ) ?? 0
+        let estimatedCost = estimate(inputTokens: 1_300, outputTokens: request.maxOutputTokens ?? 400)
         let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
         if let visionCache {
             await visionCache.store(image: image, prompt: request.prompt, response: response.text, taskType: scope)
@@ -113,6 +107,13 @@ public final class LLMGateway: @unchecked Sendable {
             await budget.release(reservation)
             throw error
         }
+    }
+
+    /// Priced at the most expensive tier, because a failure or an open breaker
+    /// on a cheaper tier sends the call there. Pricing the hold at the first
+    /// tier let a burst during failover spend several times the cap.
+    private func estimate(inputTokens: Int, outputTokens: Int) -> Double {
+        cascade.tiers.map { $0.provider.estimatedCostUSD(inputTokens: inputTokens, outputTokens: outputTokens) }.max() ?? 0
     }
 
     /// Everything besides the prompt and image that changes the answer. The

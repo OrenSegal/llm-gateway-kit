@@ -57,7 +57,7 @@ struct TraceReplayTests {
             CascadeTier(provider: primary, breaker: primaryBreaker),
             CascadeTier(provider: backup),
         ])
-        let budget = BudgetEnforcer(identifiedDailyCapUSD: 5.0, anonymousDailyCapUSD: 0.035, store: InMemoryBudgetStore())
+        let budget = BudgetEnforcer(identifiedDailyCapUSD: 5.0, anonymousDailyCapUSD: 0.075, store: InMemoryBudgetStore())
         let gateway = LLMGateway(
             cascade: cascade,
             budget: budget,
@@ -78,7 +78,8 @@ struct TraceReplayTests {
         #expect(phase1Log.filter { $0.source == .semanticCache }.count == 6)
         #expect(await primaryLog.calls == 4)
 
-        // Phase 2, budget: 5 new anonymous questions against a $0.035/day anonymous cap.
+        // Phase 2, budget: 5 new anonymous questions against a $0.075/day anonymous cap.
+        // Each call holds $0.05 (the backup's price) while in flight and records $0.01.
         var anonymousServed = 0
         var anonymousDenied = 0
         for prompt in ["eggs recipe", "rice recipe", "beans recipe", "bread recipe", "cheese recipe"] {
