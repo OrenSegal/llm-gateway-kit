@@ -63,6 +63,38 @@ struct BudgetEnforcerTests {
         }
     }
 
+    @Test("enforcers created with the default store share one set of holds")
+    func defaultStoreIsShared() async {
+        // Unique prefix: holds are in memory, so nothing is written to UserDefaults.standard.
+        let prefix = "llmgatewaykit.tests.\(UUID().uuidString)."
+        let first = BudgetEnforcer(identifiedDailyCapUSD: 3.0, anonymousDailyCapUSD: 0.5, keyPrefix: prefix)
+        let second = BudgetEnforcer(identifiedDailyCapUSD: 3.0, anonymousDailyCapUSD: 0.5, keyPrefix: prefix)
+        let admitted = await withTaskGroup(of: Bool.self) { group in
+            for i in 0..<20 {
+                group.addTask { await (i % 2 == 0 ? first : second).reserve(estimatedCostUSD: 1.0, isAnonymous: false) != nil }
+            }
+            var admitted = 0
+            for await ok in group where ok { admitted += 1 }
+            return admitted
+        }
+        #expect(admitted == 3)
+    }
+
+    @Test("negative, NaN and infinite amounts are refused or dropped")
+    func invalidAmounts() async {
+        let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 0.05, anonymousDailyCapUSD: 0.05, store: InMemoryBudgetStore())
+        await enforcer.record(actualCostUSD: .nan, isAnonymous: false)
+        await enforcer.record(actualCostUSD: -1000, isAnonymous: false)
+        await enforcer.record(actualCostUSD: .infinity, scope: "vision")
+        #expect(await enforcer.dailyUsageUSD(isAnonymous: false) == 0)
+        #expect(await enforcer.canSpend(estimatedCostUSD: 0.01, scope: "vision", capUSD: 0.05))
+
+        #expect(await enforcer.reserve(estimatedCostUSD: -1000, isAnonymous: false) == nil)
+        #expect(await enforcer.reserve(estimatedCostUSD: .nan, isAnonymous: false) == nil)
+        #expect(await enforcer.reserve(estimatedCostUSD: 500, isAnonymous: false) == nil)
+        #expect(await enforcer.reserve(estimatedCostUSD: 0.01, isAnonymous: false) != nil)
+    }
+
     @Test("a reservation counts against the cap until released, and is not spend")
     func reservationHoldsUntilReleased() async throws {
         let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 1.0, anonymousDailyCapUSD: 0.5, store: InMemoryBudgetStore())
