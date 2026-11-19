@@ -12,9 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DESIGN.md`: budget reservation, breaker states and cache keys in language-neutral pseudocode.
 - `docs/decisions.md`: five design decisions with the commit and tests behind each.
 - README: a request-flow diagram, and Limitations entries for the missing real provider adapter, the synthetic trace and the absence of production use.
+- `UserDefaultsBudgetStore.shared`, the store `BudgetEnforcer` uses when none is passed.
 
 ### Fixed
 
+- A cancelled call is no longer a provider failure. `TieredCascade.send` rethrows it without recording a breaker failure or calling the next tier. Before, five cancelled requests opened the breaker of a healthy provider.
+- Enforcers created without a `store` argument share one store. Before, each made its own, and two enforcers on the same keys each admitted a full cap.
+- `BudgetEnforcer.reserve` refuses a negative, NaN or infinite estimate and `record` drops such a cost. Before, one NaN cost made every later check fail until the next UTC day.
+- `VisionCache` treats an empty perceptual hash as a miss and does not store it. Before, two images whose hasher returned an empty string shared one cached answer.
+- `LLMGateway` embeds a prompt once per request. Before, a cache miss called the `EmbeddingProvider` twice.
 - `LLMGateway` reserves each call's estimate at the most expensive tier's price instead of the first tier's. Before, concurrent calls that failed over to a pricier tier could together spend several times the daily cap.
 - `VisionCache.lookup` serves the closest stored image, and the newest of equally close ones. Before, it served the first entry within the Hamming tolerance, which could be a different picture stored before an exact match.
 - Budget keys write the day as the Gregorian UTC date in ASCII digits on every device. Before, the day followed the device's calendar and digits, so changing the region mid-day started a fresh cap. A device on a non-Gregorian calendar starts one new key on upgrade.
