@@ -72,6 +72,21 @@ struct TieredCascadeTests {
         #expect(response.modelID == "primary")
     }
 
+    @Test("a confidence equal to the floor is accepted, not escalated")
+    func confidenceAtTheFloorIsAccepted() async throws {
+        let primary = StubProvider(
+            identifier: "primary",
+            result: .success(LLMResponse(text: "just confident enough", usage: LLMUsage(inputTokens: 1, outputTokens: 1), confidence: 0.8, modelID: "primary"))
+        )
+        let backup = StubProvider(identifier: "backup", result: .failure(URLError(.badServerResponse)))
+        let cascade = TieredCascade(tiers: [
+            CascadeTier(provider: primary, confidenceFloor: 0.8),
+            CascadeTier(provider: backup),
+        ])
+        let response = try await cascade.send(LLMRequest(prompt: "hi"))
+        #expect(response.modelID == "primary")
+    }
+
     @Test("escalates to backup when the primary's confidence is below the floor")
     func lowConfidenceEscalates() async throws {
         let primary = StubProvider(

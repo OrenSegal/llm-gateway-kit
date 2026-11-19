@@ -81,6 +81,25 @@ private func roomyBudget() -> BudgetEnforcer {
 
 @Suite("LLMGateway")
 struct LLMGatewayTests {
+    @Test("a denying gate stops the call before the budget and the provider, and carries its reason")
+    func denyingGateStopsTheCall() async throws {
+        let counter = Counter()
+        let cascade = TieredCascade(tiers: [CascadeTier(provider: CountingProvider(identifier: "primary", counter: counter))])
+        let budget = roomyBudget()
+        let killSwitch = ClosureGate(identifier: "killSwitch", denialReason: "aiDisabled") { _ in false }
+        let gateway = LLMGateway(cascade: cascade, budget: budget, gate: CompositeLLMGate(gates: [killSwitch]))
+
+        await #expect(throws: LLMGatewayError.gateDenied(reason: "aiDisabled")) {
+            _ = try await gateway.complete(LLMRequest(prompt: "hello"))
+        }
+        await #expect(throws: LLMGatewayError.gateDenied(reason: "aiDisabled")) {
+            _ = try await gateway.completeVision(LLMRequest(prompt: "what is this", image: Data([1])))
+        }
+        #expect(await counter.value == 0)
+        #expect(await budget.dailyUsageUSD(isAnonymous: false) == 0)
+        #expect(await gateway.auditLog.drainPending().isEmpty)
+    }
+
     @Test("a semantic cache hit never invokes the provider")
     func cacheHitSkipsProvider() async throws {
         let counter = Counter()

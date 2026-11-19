@@ -11,6 +11,25 @@ private struct FakeEmbeddingProvider: EmbeddingProvider {
     }
 }
 
+/// An embedding backend whose model can be swapped, as happens when an app
+/// ships a new embedding model while old entries are still cached.
+private final class SwappableEmbeddingProvider: EmbeddingProvider, @unchecked Sendable {
+    private let lock = NSLock()
+    private var model = "model-a"
+
+    var modelIdentifier: String {
+        lock.lock(); defer { lock.unlock() }
+        return model
+    }
+
+    func switchModel(to newModel: String) {
+        lock.lock(); defer { lock.unlock() }
+        model = newModel
+    }
+
+    func embed(_ text: String) async -> [Float] { [1, 0, 0] }
+}
+
 @Suite("SemanticCache")
 struct SemanticCacheTests {
     @Test("stores and returns an exact-vector hit")
@@ -20,6 +39,25 @@ struct SemanticCacheTests {
         await cache.store(prompt: "hello", response: "world")
         let result = await cache.lookup(prompt: "hello")
         #expect(result == "world")
+    }
+
+    @Test("a similarity equal to the threshold is a hit")
+    func similarityAtTheThresholdHits() async {
+        let provider = FakeEmbeddingProvider(vectors: ["hello": [1, 0, 0], "hello again": [1, 0, 0]])
+        let cache = SemanticCache(embeddingProvider: provider, similarityThreshold: 1.0)
+        await cache.store(prompt: "hello", response: "world")
+        #expect(await cache.lookup(prompt: "hello again") == "world")
+    }
+
+    @Test("an entry stored under another embedding model is never compared")
+    func otherEmbeddingModelIsAMiss() async {
+        let provider = SwappableEmbeddingProvider()
+        let cache = SemanticCache(embeddingProvider: provider, similarityThreshold: 0.9)
+        await cache.store(prompt: "hello", response: "world")
+        #expect(await cache.lookup(prompt: "hello") == "world")
+
+        provider.switchModel(to: "model-b")
+        #expect(await cache.lookup(prompt: "hello") == nil)
     }
 
     @Test("returns nil on a genuine miss below the similarity threshold")
