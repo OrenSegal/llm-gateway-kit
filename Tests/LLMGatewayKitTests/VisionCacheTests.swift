@@ -12,6 +12,16 @@ private struct FakeHasher: PerceptualHasher {
 
 @Suite("VisionCache")
 struct VisionCacheTests {
+    @Test("an empty hash is a miss and is not stored")
+    func emptyHashNeverMatches() async {
+        let failed = Data([1])
+        let alsoFailed = Data([2])
+        let cache = VisionCache(hasher: FakeHasher(hashes: [failed: "", alsoFailed: ""]))
+        await cache.store(image: failed, prompt: "q", response: "a carton of eggs", taskType: "scan")
+        #expect(await cache.count == 0)
+        #expect(await cache.lookup(image: alsoFailed, prompt: "q", taskType: "scan") == nil)
+    }
+
     @Test("hits on an identical hash")
     func exactHit() async {
         let imageA = Data([1, 2, 3])

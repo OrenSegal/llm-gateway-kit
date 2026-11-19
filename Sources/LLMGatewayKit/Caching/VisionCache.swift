@@ -6,6 +6,8 @@ import Foundation
 /// hashes approximates visual similarity. A cryptographic hash (SHA256, MD5)
 /// does NOT work here — it only matches byte-identical images, which defeats
 /// the point (re-compressed or resized copies of the same photo would miss).
+/// Return an empty string when hashing fails: `VisionCache` treats it as a
+/// miss and stores nothing.
 public protocol PerceptualHasher: Sendable {
     func hash(_ image: Data) async -> String
 }
@@ -55,6 +57,8 @@ public actor VisionCache {
 
     public func lookup(image: Data, prompt: String, taskType: String) async -> String? {
         let queryHash = await hasher.hash(image)
+        // Two empty hashes are distance 0 apart, so every image would match.
+        guard !queryHash.isEmpty else { return nil }
         let cutoff = Date().addingTimeInterval(-ttl)
         // Expired entries are misses even before evictExpired() sweeps them.
         guard let index = cache.firstIndex(where: {
@@ -69,6 +73,7 @@ public actor VisionCache {
 
     public func store(image: Data, prompt: String, response: String, taskType: String) async {
         let hash = await hasher.hash(image)
+        guard !hash.isEmpty else { return }
         cache.append(CacheEntry(hash: hash, prompt: prompt, response: response, taskType: taskType, storedAt: Date(), hitCount: 0))
     }
 
