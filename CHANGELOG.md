@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `LLMGateway` reserves each call's estimate at the most expensive tier's price instead of the first tier's. Before, concurrent calls that failed over to a pricier tier could together spend several times the daily cap.
+- A cap that is an exact multiple of the call cost admits every call that fits. Totals are compared with the cap in whole micro-dollars; before, summed `Double` dollars drifted past it, so a $0.30 cap refused the third $0.10 call.
 
 ## [0.2.0] - 2026-11-02
 

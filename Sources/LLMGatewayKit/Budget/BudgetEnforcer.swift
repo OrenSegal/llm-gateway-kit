@@ -56,7 +56,7 @@ public actor BudgetEnforcer {
     public func canSpend(estimatedCostUSD: Double, isAnonymous: Bool) async -> Bool {
         let cap = isAnonymous ? anonymousDailyCapUSD : identifiedDailyCapUSD
         let used = await store.spend(forKey: todayKey(isAnonymous: isAnonymous))
-        return (used + estimatedCostUSD) <= cap
+        return budgetFits(used + estimatedCostUSD, capUSD: cap)
     }
 
     /// Atomically holds `estimatedCostUSD` against the caller's cap, or returns
@@ -101,7 +101,7 @@ public actor BudgetEnforcer {
     /// (e.g. "image analysis gets $0.50/day even within a user's larger cap").
     public func canSpend(estimatedCostUSD: Double, scope: String, capUSD: Double) async -> Bool {
         let used = await store.spend(forKey: scopedKey(scope))
-        return (used + estimatedCostUSD) <= capUSD
+        return budgetFits(used + estimatedCostUSD, capUSD: capUSD)
     }
 
     public func record(actualCostUSD: Double, scope: String) async {

@@ -12,10 +12,21 @@ public protocol BudgetStore: Sendable {
     /// atomic step (an actor method with no `await` inside, or a single database
     /// transaction): this is what stops concurrent calls overshooting a cap.
     /// Holds are not spend, so they don't appear in `spend(forKey:)`.
+    /// Compare rounded to whole micro-dollars, not with a bare `<=`: summed
+    /// `Double` dollars drift, and 0.1 + 0.1 + 0.1 is over a 0.3 cap.
     func reserve(_ amount: Double, capUSD: Double, forKey key: String) async -> Bool
 
     /// Gives back a hold taken with `reserve`.
     func release(_ amount: Double, forKey key: String) async
+}
+
+/// Whether `totalUSD` is within `capUSD`, compared in whole micro-dollars.
+/// Sums of `Double` dollars drift (0.1 + 0.1 + 0.1 is 0.30000000000000004), and
+/// a plain `<=` would refuse the third $0.10 call under a $0.30 cap. The
+/// built-in stores and `BudgetEnforcer.canSpend` use this; a custom
+/// `BudgetStore` should compare the same way.
+func budgetFits(_ totalUSD: Double, capUSD: Double) -> Bool {
+    (totalUSD * 1_000_000).rounded() <= (capUSD * 1_000_000).rounded()
 }
 
 /// Default `UserDefaults`-backed store. `UserDefaults` itself is thread-safe
@@ -47,7 +58,7 @@ public actor UserDefaultsBudgetStore: BudgetStore {
     }
 
     public func reserve(_ amount: Double, capUSD: Double, forKey key: String) async -> Bool {
-        guard defaults.double(forKey: key) + holds[key, default: 0] + amount <= capUSD else { return false }
+        guard budgetFits(defaults.double(forKey: key) + holds[key, default: 0] + amount, capUSD: capUSD) else { return false }
         holds[key, default: 0] += amount
         return true
     }
@@ -73,7 +84,7 @@ public actor InMemoryBudgetStore: BudgetStore {
     }
 
     public func reserve(_ amount: Double, capUSD: Double, forKey key: String) async -> Bool {
-        guard totals[key, default: 0] + holds[key, default: 0] + amount <= capUSD else { return false }
+        guard budgetFits(totals[key, default: 0] + holds[key, default: 0] + amount, capUSD: capUSD) else { return false }
         holds[key, default: 0] += amount
         return true
     }

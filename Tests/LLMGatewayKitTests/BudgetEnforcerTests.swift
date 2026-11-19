@@ -63,6 +63,36 @@ struct BudgetEnforcerTests {
         }
     }
 
+    @Test("a cap that is an exact multiple of the call cost admits every call that fits")
+    func exactMultipleOfCostFitsTheCap() async {
+        // 0.1 + 0.1 + 0.1 is 0.30000000000000004 as a Double, which is over 0.3.
+        let suite = "llmgatewaykit.tests.\(UUID().uuidString)"
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let stores: [any BudgetStore] = [InMemoryBudgetStore(), UserDefaultsBudgetStore(defaults: UserDefaults(suiteName: suite)!)]
+
+        for store in stores {
+            let enforcer = BudgetEnforcer(identifiedDailyCapUSD: 0.30, anonymousDailyCapUSD: 0.30, store: store)
+            var admitted = 0
+            for _ in 0..<4 {
+                guard let hold = await enforcer.reserve(estimatedCostUSD: 0.10, isAnonymous: false) else { continue }
+                await enforcer.record(actualCostUSD: 0.10, isAnonymous: false)
+                await enforcer.release(hold)
+                admitted += 1
+            }
+            #expect(admitted == 3)
+
+            await enforcer.record(actualCostUSD: 0.10, isAnonymous: true)
+            await enforcer.record(actualCostUSD: 0.10, isAnonymous: true)
+            #expect(await enforcer.canSpend(estimatedCostUSD: 0.10, isAnonymous: true))
+            #expect(await enforcer.canSpend(estimatedCostUSD: 0.11, isAnonymous: true) == false)
+
+            await enforcer.record(actualCostUSD: 0.10, scope: "vision")
+            await enforcer.record(actualCostUSD: 0.10, scope: "vision")
+            #expect(await enforcer.canSpend(estimatedCostUSD: 0.10, scope: "vision", capUSD: 0.30))
+            #expect(await enforcer.canSpend(estimatedCostUSD: 0.11, scope: "vision", capUSD: 0.30) == false)
+        }
+    }
+
     @Test("enforcers created with the default store share one set of holds")
     func defaultStoreIsShared() async {
         // Unique prefix: holds are in memory, so nothing is written to UserDefaults.standard.
