@@ -55,8 +55,17 @@ public actor SemanticCache {
     /// `nil` on a miss. Never throws — an embedding failure degrades to a
     /// cache miss rather than failing the caller's request.
     public func lookup(prompt: String, scope: String = "") async -> String? {
+        await lookupKeepingEmbedding(prompt: prompt, scope: scope).response
+    }
+
+    /// `lookup` that also hands back the prompt's embedding, so a caller that
+    /// stores the answer after a miss doesn't pay to embed the prompt twice.
+    func lookupKeepingEmbedding(prompt: String, scope: String) async -> (response: String?, embedding: [Float]) {
         let queryEmbedding = await embeddingProvider.embed(prompt)
-        guard !queryEmbedding.isEmpty else { return nil }
+        return (queryEmbedding.isEmpty ? nil : nearest(to: queryEmbedding, scope: scope), queryEmbedding)
+    }
+
+    private func nearest(to queryEmbedding: [Float], scope: String) -> String? {
 
         let cutoff = Date().addingTimeInterval(-ttl)
         var best: (key: CacheKey, similarity: Double)?
@@ -73,7 +82,10 @@ public actor SemanticCache {
     }
 
     public func store(prompt: String, response: String, scope: String = "") async {
-        let embedding = await embeddingProvider.embed(prompt)
+        store(prompt: prompt, response: response, scope: scope, embedding: await embeddingProvider.embed(prompt))
+    }
+
+    func store(prompt: String, response: String, scope: String, embedding: [Float]) {
         guard !embedding.isEmpty else { return }
         cache[CacheKey(scope: scope, prompt: prompt)] = CacheEntry(
             embedding: embedding,

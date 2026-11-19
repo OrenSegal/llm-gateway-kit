@@ -24,6 +24,15 @@ private struct FixedEmbeddingProvider: EmbeddingProvider {
     func embed(_ text: String) async -> [Float] { [1, 0, 0] }
 }
 
+private struct CountingEmbeddingProvider: EmbeddingProvider {
+    let modelIdentifier = "counting-v1"
+    let calls = Counter()
+    func embed(_ text: String) async -> [Float] {
+        await calls.increment()
+        return [1, 0, 0]
+    }
+}
+
 private struct FixedHasher: PerceptualHasher {
     func hash(_ image: Data) async -> String { "ffff" }
 }
@@ -87,6 +96,20 @@ struct LLMGatewayTests {
         // Same embedding vector (fixed provider) => cache hit on the second call.
         _ = try await gateway.complete(LLMRequest(prompt: "a different but semantically-equal prompt"))
         #expect(await counter.value == 1, "provider should not be called again on a cache hit")
+    }
+
+    @Test("a miss embeds the prompt once, and so does a hit")
+    func oneEmbeddingPerRequest() async throws {
+        let embedder = CountingEmbeddingProvider()
+        let cascade = TieredCascade(tiers: [CascadeTier(provider: CountingProvider(identifier: "a", counter: Counter()))])
+        let gateway = LLMGateway(cascade: cascade, budget: roomyBudget(), semanticCache: SemanticCache(embeddingProvider: embedder))
+
+        _ = try await gateway.complete(LLMRequest(prompt: "q"))
+        #expect(await embedder.calls.value == 1)
+
+        let hit = try await gateway.complete(LLMRequest(prompt: "q"))
+        #expect(hit.modelID == "cache")
+        #expect(await embedder.calls.value == 2)
     }
 
     @Test("budget gate denies the call once the cap is exhausted")
