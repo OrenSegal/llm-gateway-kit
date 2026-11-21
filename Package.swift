@@ -9,10 +9,17 @@ let package = Package(
     ],
     products: [
         .library(name: "LLMGatewayKit", targets: ["LLMGatewayKit"]),
+        // Foundation only.
+        .library(name: "LLMPricing", targets: ["LLMPricing"]),
     ],
     targets: [
         .target(
+            name: "LLMPricing",
+            path: "Sources/LLMPricing"
+        ),
+        .target(
             name: "LLMGatewayKit",
+            dependencies: ["LLMPricing"],
             path: "Sources/LLMGatewayKit"
         ),
         .executableTarget(

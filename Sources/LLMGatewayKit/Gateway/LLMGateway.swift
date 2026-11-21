@@ -25,14 +25,20 @@ public final class LLMGateway: @unchecked Sendable {
     private let cascade: TieredCascade
     private let budget: BudgetEnforcer
     private let auditLogger: CostAuditLogger
+    private let pricing: PricingTable?
 
+    /// - Parameter pricing: When set, each response's actual cost comes from
+    ///   this table, looked up by the response's `modelID`; an unknown id gets
+    ///   the table's fallback price. When nil, the provider prices it with
+    ///   `estimatedCostUSD`. The pre-flight estimate always comes from the provider.
     public init(
         cascade: TieredCascade,
         budget: BudgetEnforcer,
         gate: (any LLMGate)? = nil,
         semanticCache: SemanticCache? = nil,
         visionCache: VisionCache? = nil,
-        auditLogger: CostAuditLogger = CostAuditLogger()
+        auditLogger: CostAuditLogger = CostAuditLogger(),
+        pricing: PricingTable? = nil
     ) {
         self.cascade = cascade
         self.budget = budget
@@ -40,6 +46,7 @@ public final class LLMGateway: @unchecked Sendable {
         self.semanticCache = semanticCache
         self.visionCache = visionCache
         self.auditLogger = auditLogger
+        self.pricing = pricing
     }
 
     /// Text completion. Cheapest-first: cache, then the budget-reserved provider cascade.
@@ -111,6 +118,9 @@ public final class LLMGateway: @unchecked Sendable {
     }
 
     private func costForProvider(modelID: String, usage: LLMUsage) -> Double {
+        if let pricing {
+            return pricing.cost(model: modelID, tokens: TokenCounts(usage))
+        }
         guard let provider = cascade.tiers.first(where: { $0.provider.identifier == modelID })?.provider
             ?? cascade.tiers.first?.provider else {
             return 0

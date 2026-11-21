@@ -109,6 +109,17 @@ short-circuiting chain of pre-flight checks (budget, circuit state, your own
 kill switches/entitlement checks) that keeps the "should this call even
 happen" logic in one place instead of scattered across call sites.
 
+### Pricing
+
+`LLMPricing` is a separate library product with a per-model price table
+(`PricingTable`) and token counts that include cache reads and writes
+(`TokenCounts`). It uses Foundation only. Pass a table to
+`LLMGateway(pricing:)` and each response is priced by the model id it
+reports, instead of by the provider that sent it. A model id the table does
+not know gets the table's fallback price. The built-in OpenAI
+prices are copied from another open-source table and not checked against
+OpenAI's own price page; override them with `PricingTable.load(from:)`.
+
 ## Where this came from
 
 These three patterns come from the LLM gateway in Shelfie, an iOS
@@ -190,7 +201,7 @@ force Xcode's toolchain instead.
 - **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Holds live in memory, so the cap is hard within one store instance only: two instances or processes sharing a `UserDefaults` suite don't see each other's holds, and a hold is lost if the app quits mid-call (that call's spend is never recorded). Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
 - **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries are never served but still take memory until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.
 - **The vision cache ignores the prompt.** It keys on the image and `taskType`, so a different question about the same image under the same task returns the cached answer. Use a separate `taskType` per question.
-- **Recorded spend can under-count.** An escalated call records only the final tier, the price lookup can miss when a provider's `modelID` differs from its `identifier` (`LLMGateway.swift:114`), and a call where every tier returns low confidence records nothing.
+- **Recorded spend can under-count.** An escalated call records only the final tier, without a `pricing` table the price lookup can miss when a provider's `modelID` differs from its `identifier` (`LLMGateway.swift:123`), and with one an unknown model id silently gets the fallback price, and a call where every tier returns low confidence records nothing.
 - **The semantic cache keys on the prompt text only.** It ignores `taskType`, so similar prompts sent for different tasks can share a cached answer (`VisionCache` does separate by `taskType`). The 0.92 similarity default is a starting point with no published tuning data behind it; measure it on your own traffic.
 
 ## What this is not

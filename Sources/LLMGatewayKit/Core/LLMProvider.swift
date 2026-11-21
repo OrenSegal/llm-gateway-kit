@@ -1,4 +1,5 @@
 import Foundation
+@_exported import LLMPricing
 
 /// Token usage for a single LLM call. Providers report whatever they have;
 /// unknown fields default to zero rather than throwing, so a partial usage
@@ -18,6 +19,15 @@ public struct LLMUsage: Sendable, Equatable {
     }
 
     public var billedOutputTokens: Int { outputTokens + reasoningTokens }
+}
+
+extension TokenCounts {
+    /// `LLMUsage` counts reasoning on top of `outputTokens`; `TokenCounts`
+    /// counts thinking inside `output`. So reasoning joins `output` here and is
+    /// also noted in `thinking`. `LLMUsage` has no cache fields, so those stay zero.
+    public init(_ usage: LLMUsage) {
+        self.init(input: usage.inputTokens, output: usage.billedOutputTokens, thinking: usage.reasoningTokens)
+    }
 }
 
 /// A single LLM request. `image` is optional so the same request type covers

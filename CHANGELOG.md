@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `LLMPricing` library product: `PricingTable`, `ModelPrice` and `TokenCounts`, Foundation only. `LLMGatewayKit` depends on it and re-exports it.
+- `LLMGateway(pricing:)`: when set, each response's actual cost comes from the table, looked up by the response's `modelID`.
+- `TokenCounts(_ usage: LLMUsage)`: moves reasoning tokens inside `output` and notes them in `thinking`.
 - `BudgetEnforcer.reserve`, `commit(_:actualCostUSD:)`, `release(_:)` and the `Reservation` type.
 
 ### Changed
