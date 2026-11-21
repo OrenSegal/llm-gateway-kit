@@ -84,8 +84,9 @@ escalate depends on your traffic and is not measured here.
 call goes through three steps:
 
 1. `reserve` the estimated cost. The store checks the cap and places a hold
-   in one atomic step, so settled spend plus outstanding holds never goes
-   over the cap, however many calls start together.
+   in one atomic step, so no reservation is granted that would take settled
+   spend plus outstanding holds over the cap, however many calls start
+   together.
 2. Make the call.
 3. `commit` the actual cost, or `release` the hold if the call failed.
 
@@ -184,7 +185,7 @@ force Xcode's toolchain instead.
 
 ## Limitations
 
-- **The cap is hard on admission, not on settled spend.** No call is admitted whose estimate would take settled spend plus outstanding holds over the cap. A call that costs more than its estimate still records its full cost, so settled spend can end up above the cap by the estimate error of calls already admitted. After that, every new call is refused. The deprecated `canSpend`/`record` pair holds nothing and stays soft under concurrency.
+- **The cap is hard on admission, not on settled spend.** No call is admitted whose estimate would take settled spend plus outstanding holds over the cap. A call that costs more than its estimate still records its full cost, so settled spend can end up above the cap by the estimate error of calls already admitted. A call still running when its reservation expires can push it over too: its budget goes back to other calls, and its late commit lands on top. Set `reservationTTL` above your slowest call. Once settled spend is over the cap, every new call is refused. The deprecated `canSpend`/`record` pair holds nothing and stays soft under concurrency.
 - **The pre-flight estimate is rough.** It prices the request at the first tier's rate. Text requests count input tokens as characters divided by 4 and assume 256 output tokens when `maxOutputTokens` is unset; vision requests assume a flat 1,300 input tokens and 400 output tokens. A call that escalates to a pricier tier costs more than it reserved.
 - **The default budget store is client-side.** `UserDefaultsBudgetStore` is per device. On iOS it resets when the app is deleted; on macOS the preferences can survive a reinstall. Holds live in memory, so the cap is hard within one store instance only: two instances or processes sharing a `UserDefaults` suite don't see each other's holds, and a hold is lost if the app quits mid-call (that call's spend is never recorded). Treat it as a guard against runaway loops, not as billing enforcement; use a server-backed `BudgetStore` for that. Days roll over at midnight UTC.
 - **Caches are in memory, unbounded and scanned linearly.** Nothing persists across launches, there is no size cap, and expired entries are never served but still take memory until you call `evictExpired()`. A lookup can compare against every entry (`SemanticCache` always does; `VisionCache` stops at the first match), so lookups slow down as the cache grows.

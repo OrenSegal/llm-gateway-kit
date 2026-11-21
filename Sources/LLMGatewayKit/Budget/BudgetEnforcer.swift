@@ -31,7 +31,9 @@ public struct Reservation: Sendable, Hashable {
 ///
 /// A reservation that is never settled (a crash, a hung task) stops holding
 /// budget after `reservationTTL`. A commit that arrives after expiry still
-/// records its spend.
+/// records its spend, and since that budget may already have gone to other
+/// calls, a late commit can also take settled spend over the cap. Set the
+/// TTL above your slowest call.
 ///
 /// Supports a simple two-tier policy out of the box (identified vs
 /// anonymous users get different caps, mirroring the common shape of "signed
