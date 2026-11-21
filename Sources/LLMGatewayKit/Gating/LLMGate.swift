@@ -63,8 +63,11 @@ public struct CompositeLLMGate: LLMGate, Sendable {
 
 // MARK: - Built-in gates
 
-/// Wraps a `BudgetEnforcer` as a gate so it can compose with other checks in
-/// a `CompositeLLMGate` chain.
+/// Non-reserving budget pre-check for a `CompositeLLMGate` chain. It denies
+/// a call that would not fit under the cap, counting outstanding holds, but
+/// holds nothing: a gate can only answer allow/deny, and a hold taken here
+/// would leak whenever a later gate denied. The hard cap is the reservation
+/// `LLMGateway` takes after the chain allows, so this gate is optional.
 public struct BudgetGate: LLMGate {
     public let identifier = "budget"
     private let enforcer: BudgetEnforcer
@@ -74,7 +77,7 @@ public struct BudgetGate: LLMGate {
     }
 
     public func evaluate(context: LLMGateContext) async -> LLMGateDecision {
-        let allowed = await enforcer.canSpend(
+        let allowed = await enforcer.fits(
             estimatedCostUSD: context.estimatedCostUSD,
             isAnonymous: context.isAnonymous
         )

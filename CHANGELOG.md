@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The budget cap is now hard on admission. `BudgetEnforcer.reserve` checks the cap and places a hold in one atomic store step, so concurrent calls can no longer all pass the check and overshoot it. Settle each reservation with `commit(_:actualCostUSD:)` or `release(_:)`. Unsettled reservations stop holding budget after `reservationTTL` (default 300 seconds). An actual cost above the estimate is recorded in full.
+- `LLMGateway` reserves after the gate chain allows, commits the actual cost on success, and releases on any error, cancellation included. Its default gate chain is now empty; `BudgetGate` remains as an optional non-reserving pre-check that counts outstanding holds.
+- `remainingBudgetUSD` subtracts outstanding holds. `dailyUsageUSD` still reports settled spend only.
+
+### Deprecated
+
+- `BudgetEnforcer.canSpend` and `record`. Migration: replace `canSpend(estimatedCostUSD:...)` with `reserve(estimatedCostUSD:...)`, which returns a `Reservation` or nil, and replace `record(actualCostUSD:...)` with `commit(reservation, actualCostUSD:)`, or `release(reservation)` if the call failed.
+
+### Breaking
+
+- `BudgetStore` has four new requirements: `reserve`, `commit`, `release` and `heldSpend`. Custom stores must implement them, and `reserve` must check and hold with no suspension point in between. `InMemoryBudgetStore` and `UserDefaultsBudgetStore` implement them.
+
 ## [0.1.1] - 2026-10-26
 
 ### Added

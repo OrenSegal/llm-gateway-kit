@@ -6,12 +6,15 @@ import Foundation
 /// to touch directly.
 ///
 /// Request flow for `complete(_:isAnonymous:)`:
-///   1. Run the gate chain. Any denial short-circuits with `.gateDenied`.
-///   2. Check the semantic cache. A hit returns immediately — no provider
+///   1. Check the semantic cache. A hit returns immediately — no provider
 ///      call, no spend.
-///   3. On a miss, estimate cost and check the budget enforcer.
+///   2. Run the gate chain. Any denial short-circuits with `.gateDenied`.
+///   3. On a miss, estimate cost and reserve it with the budget enforcer.
+///      No reservation means `.gateDenied(reason: "dailyBudgetExceeded")`.
 ///   4. Run the tiered provider cascade (which owns its own circuit breakers).
-///   5. Record actual spend, store the response in the cache, log the audit entry.
+///      If it throws, release the reservation.
+///   5. Commit the actual cost, store the response in the cache, log the
+///      settled cost to the audit logger.
 ///
 /// `completeVision(_:image:isAnonymous:)` follows the same shape but checks
 /// the vision (perceptual-hash) cache instead of the semantic cache.
@@ -33,13 +36,13 @@ public final class LLMGateway: @unchecked Sendable {
     ) {
         self.cascade = cascade
         self.budget = budget
-        self.gate = gate ?? CompositeLLMGate(gates: [BudgetGate(enforcer: budget)])
+        self.gate = gate ?? CompositeLLMGate(gates: [])
         self.semanticCache = semanticCache
         self.visionCache = visionCache
         self.auditLogger = auditLogger
     }
 
-    /// Text completion. Cheapest-first: cache, then budget-gated provider cascade.
+    /// Text completion. Cheapest-first: cache, then the budget-reserved provider cascade.
     public func complete(_ request: LLMRequest, isAnonymous: Bool = false) async throws -> LLMResponse {
         if let semanticCache, let cached = await semanticCache.lookup(prompt: request.prompt) {
             await auditLogger.log(source: .semanticCache, costUSD: 0)
@@ -50,18 +53,7 @@ public final class LLMGateway: @unchecked Sendable {
             inputTokens: request.prompt.count / 4,
             outputTokens: request.maxOutputTokens ?? 256
         ) ?? 0
-        let decision = await gate.evaluate(context: LLMGateContext(isAnonymous: isAnonymous, estimatedCostUSD: estimatedCost))
-        guard decision.isAllowed else {
-            if case .deny(_, let reason) = decision {
-                throw LLMGatewayError.gateDenied(reason: reason)
-            }
-            throw LLMGatewayError.gateDenied(reason: "unknown")
-        }
-
-        let response = try await cascade.send(request)
-        let actualCost = costForProvider(modelID: response.modelID, usage: response.usage)
-        await budget.record(actualCostUSD: actualCost, isAnonymous: isAnonymous)
-        await auditLogger.log(source: .provider, costUSD: actualCost)
+        let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
         if let semanticCache {
             await semanticCache.store(prompt: request.prompt, response: response.text)
         }
@@ -84,6 +76,15 @@ public final class LLMGateway: @unchecked Sendable {
             inputTokens: 1_300,
             outputTokens: request.maxOutputTokens ?? 400
         ) ?? 0
+        let response = try await sendWithinBudget(request, estimatedCost: estimatedCost, isAnonymous: isAnonymous)
+        if let visionCache {
+            await visionCache.store(image: image, response: response.text, taskType: request.taskType)
+        }
+        return response
+    }
+
+    /// Gate chain, then reserve, send, and commit or release.
+    private func sendWithinBudget(_ request: LLMRequest, estimatedCost: Double, isAnonymous: Bool) async throws -> LLMResponse {
         let decision = await gate.evaluate(context: LLMGateContext(isAnonymous: isAnonymous, estimatedCostUSD: estimatedCost))
         guard decision.isAllowed else {
             if case .deny(_, let reason) = decision {
@@ -91,14 +92,21 @@ public final class LLMGateway: @unchecked Sendable {
             }
             throw LLMGatewayError.gateDenied(reason: "unknown")
         }
-
-        let response = try await cascade.send(request)
-        let actualCost = costForProvider(modelID: response.modelID, usage: response.usage)
-        await budget.record(actualCostUSD: actualCost, isAnonymous: isAnonymous)
-        await auditLogger.log(source: .provider, costUSD: actualCost)
-        if let visionCache {
-            await visionCache.store(image: image, response: response.text, taskType: request.taskType)
+        guard let reservation = await budget.reserve(estimatedCostUSD: estimatedCost, isAnonymous: isAnonymous) else {
+            throw LLMGatewayError.gateDenied(reason: "dailyBudgetExceeded")
         }
+
+        let response: LLMResponse
+        do {
+            response = try await cascade.send(request)
+        } catch {
+            // Covers cancellation too: nothing settled, so return the hold.
+            await budget.release(reservation)
+            throw error
+        }
+        let actualCost = costForProvider(modelID: response.modelID, usage: response.usage)
+        await budget.commit(reservation, actualCostUSD: actualCost)
+        await auditLogger.log(source: .provider, costUSD: actualCost)
         return response
     }
 
