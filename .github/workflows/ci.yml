@@ -6,11 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    timeout-minutes: 30
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
       - name: Build

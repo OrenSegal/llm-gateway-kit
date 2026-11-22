@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: least-privilege `permissions`, job timeout, `actions/checkout` pinned to a commit sha; Dependabot now tracks GitHub Actions.
+
 ### Added
 
 - `DESIGN.md`: budget reservation, breaker states and cache keys in language-neutral pseudocode.
